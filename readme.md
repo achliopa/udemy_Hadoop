@@ -48,3 +48,38 @@
 * VM needs 8GB of RAM or more
 * Hortonworks Sandbox will be replaced by Cloudera Sandbox
 * we need HDP sandbox for the course
+
+* Install on AWS as Docker Image
+    * launch a 16gb RAM, 30gb storage Amazon Linux 2 AMI
+    * ssh to instance
+    * update `sudo yum update -y`
+    * install docker `sudo yum install -y docker`
+    * install git `sudo yum install -y git`
+    * start docker service `sudo service docker start`
+    * confirm docker is working `sudo usermod -a -G docker ec2-user`
+    * logout/login to terminal `docker info` to check it works
+* login to cloudera to get the HDP image for docker v2.65
+* unzip the zip file in the VM
+* get the turorial from `https://www.cloudera.com/tutorials/sandbox-deployment-and-install-guide/3.html`
+* cd into the unzip dir
+* run script `sh docker-deploy-hdp265.sh`
+* verify installation with `docker ps` 
+* we should see 'sandbox-hdp' on screen
+* When you want to stop/shutdown your HDF sandbox, run the following commands:
+```
+docker stop sandbox-hdf
+docker stop sandbox-proxy
+```
+* When you want to re-start your HDF sandbox, run the following commands:
+```
+docker start sandbox-hdf
+docker start sandbox-proxy
+```
+* A container is an instance of the Sandbox image. You must stop container dependencies before removing it. Issue the following commands:
+```
+docker stop sandbox-hdf
+docker stop sandbox-proxy
+docker rm sandbox-hdf
+docker rm sandbox-proxy
+```
+* if you want to remove the CDF Sandbox image, issue the following command after stopping and removing the containers: `docker rmi hortonworks/sandbox-hdf:2.6.5`
