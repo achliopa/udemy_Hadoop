@@ -173,4 +173,31 @@ WHERE movie_id=50
     * TEZ: (MapReduce Alternative) a Spark alternative uses the same tech (Directed Acyclic Graph). usually used with Hive to accelarate it.. Hive can sit on MapREduce or Tez (faster)
     * Apache HBASE: sits on top of HDFS (all the way up to API layer: YARN + MapReduce layer alternative). it is used to expose the data in the cluster to transactional platforms. it is a NoSQL database. its fast and optimized for WebAPIs
     * Apache STORM: is a way of processing streaming data (eg sensors,logs) in real time (Spark Streaming does the same thing). we can update our ML learning models or transform data to DB in realtime
-    * oozie: is a way of scheduling jobs on the cluster
+* Management packages
+    * oozie: is a way of scheduling jobs on the cluster, its a scheduler of sorts
+    * Zookeper: is a technology for coordinating everything on the cluster (nodes management) many apps rely on zookeper to maintain performance in a dynamic cluster
+* Data Ingestion to Hadoop cluster
+    * Sqoop: tie Hadoop to a Relational DB (JDBC,ODBC)
+    * Flume: trasport web logs at scale to the cluster (usually to STORM or Spark Streaming)
+    * Kafka: streaming middleware. can collect data from anywhere and strema them to Hadoop
+* Non-Core Packages for External Data Storage  (HBASE like):
+    * MySQL: we can export data from Hadoop to MySQL for persistent storage. spark can store and receive data from MySQL with JDBC or ODBC
+    * Casandra: NoSQL DB good HBASE alternative to expose Hadoop data to webservers
+    * MongoDB: similar to Cassandra and HBASE as well
+* Non-Core Query Engines (like Hive):
+    * Apache DRILL: allows us to write SQL queries that will work on a wide range of NoSQL DBs (HBASE,Cassandra,MongoDB)
+    * HUE: Interactively run queries (works well with Hive and HBASE) for Cloudera it plays the role of Ambari
+    * Apache PHOENIX: like DRILL allows SQL queries across the whole storage options. it offers ACID and OLTP
+    * Presto: another way to execute queires on the entrire cluster
+    * Apache Zeppelin: same thing. notebook style UI
+
+### Lecture Section 2: Using Hadoop's Core: HDFS and MapReduce
+
+* HDFS is made to handle very large files that are broken up and distributed accross the cluster
+* It breaks files into blocks (128MB by default)
+* braking files in blocks allows distributing the processing of these large files (parallel processing)
+* it can make sure that blocks of data re processed by cores physically close to the storage
+* also it stores copies of the blocks accros the cluster for redundancy
+* HDFS Architecture
+    * Single Name Node: it keeps track where data blocks are. also keeps the edit log keeping track on the lifecycle of data and the states
+    * Multiple Data Nodes: is the destination of queries once name node sorts where is what. they are the workers. store the data and do the processing
