@@ -191,7 +191,9 @@ WHERE movie_id=50
     * Presto: another way to execute queires on the entrire cluster
     * Apache Zeppelin: same thing. notebook style UI
 
-### Lecture Section 2: Using Hadoop's Core: HDFS and MapReduce
+## Section 2: Using Hadoop's Core: HDFS and MapReduce
+
+### Lecture 8. HDFS: What it is, and how it works
 
 * HDFS is made to handle very large files that are broken up and distributed accross the cluster
 * It breaks files into blocks (128MB by default)
@@ -201,3 +203,45 @@ WHERE movie_id=50
 * HDFS Architecture
     * Single Name Node: it keeps track where data blocks are. also keeps the edit log keeping track on the lifecycle of data and the states
     * Multiple Data Nodes: is the destination of queries once name node sorts where is what. they are the workers. store the data and do the processing
+* Read File: Client reaches to the name node to find out where files are located and then talks direclty to data nodes
+* Write File:
+    *  Client talks to Name Node. Name node creates a new entry for the fileand sends it to client
+    *  Client then talks to a data node sending the data and the file entry.
+    *  Nodes handle the file storage among themselfs by exchanging data
+    *  When file is stored data node sends back to client an updated entry that goes back to Name node for storage
+* Only 1 node plays the active Name Node role. 
+    * Namenode writes to local disk and NFS (backup storage). If it goes down we build a new one from backups
+    * if a secondary Namenode exists. it maintains a merged copy of edit log we can restore from faster (Not a Hot backup but fast)
+* HDFS federation:
+    * not so much a reliability solution but a way to scale on namenodes. 
+    * each namenode manages a specific namespace volume. 
+    * if HDFS has a lot of small files namenode can reach its file limit
+* HDFS High Availability
+    * Hot standby namenode using shared edit log
+    * zookeper tracks active namenode
+    * uses extreme measures to ensure only one namenode is used at a time
+* How to talk to HDFS (exposes itself like a Network Hard Drive):
+    * UI (Ambari)
+    * Comand line
+    * HTTP / HDFS Proxies
+    * Java Interface, or use a wrapper in other lang
+    * NFS Gateway
+
+### Lecture 11. MapReduce: What it is, and how it works
+
+* MapReduce
+    * Distributes data processing on the cluster
+    * Divides our data to partitions that are MAPPED (transformed) and REDUCED (aggregated) by user defined mapper and reducer functions
+    * THe key point is to achieve parallel processing of data
+    * Resilient to failure. an application master monitors our mappers and reducers on each partition
+* Example: How many movies did each user rate in MovieLens dataset
+* MAPPER converts raw source data (e.g a single movie rating) into key/value pairs
+* key is what e aggregate on. in our example key is the `user_id`, the value is `movie_id`
+* MAPPER is happening per node. it also reduced the amount of exchanged data in the cluster
+* MapReduce automatically sorts and groups the Mapped Data ("Shuffle and Sort") AKA key-value pairs
+* the output will be k1:v11,...v1n , k2:v21,...,v2n where k1 < k2
+* REDUCER processes each keys values acording to the user defined function. in our case len(movies) or k1:REDUCER(v11,...,v1n) ... kn:REDUCER(vn1,...,vnn)
+
+### Lecture 12. How MapReduce distributes processing
+
+* 
