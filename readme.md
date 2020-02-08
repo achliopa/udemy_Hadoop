@@ -231,11 +231,26 @@ WHERE movie_id=50
 
 * we connect to the sandbox 
 * in the amabari dashbard we click the menu icon and select file view
-* we see the HDFS as a disk
+* we see the HDFS as a disk in a NAS
 * we go user=>maria_dev which is the current users home dir
 * we create a new folder for themovieles dataset: New Folder => ml-100k => add
 * go in and click upload and dump in u.data and u.item files
-* we can open and view a file (much like NAS functionality). we can download
+* we can open and view a file. we can download it
+* we can select >1 data files and concatenate them together
+* we can delete files and folders
+* never shatdown the instance or vm before stoping the HDP Sandbox first
+
+### Lecture 10. [Activity] Install the MovieLens dataset into HDFS using the command line
+
+* we ssh on the instance as maria_dev on port 2222
+* to issue commands on the HDSF we precede commands with `hadoop fs -`
+* to do an ls on the homedir we write `hadoop fs -ls`
+* we create the dir `hadoop fs -mkdir ml-100k`
+* if we issue straight ls or pwd we are on the host vm and not in the hadoop fs that runs on top.
+* we download the u.data file to the host vm ` wget http://media.sundog-soft.com/hadoop/ml-100k/u.data`
+* we copy the file to HDFS with CopyFromLocal flag passing relative from and to path `hadoop fs -copyFromLocal u.data ml-100k/u.data`
+* if we delte files with `hadoop fs -rm` they go to trash folder to rm folder try `-rmdir`
+* with `haddop fs` we can see all the available options for working in hdfs
 
 ### Lecture 11. MapReduce: What it is, and how it works
 
@@ -277,3 +292,29 @@ WHERE movie_id=50
     * if an entrire node goes down? resource manager will try to restart it
     * what if resource manager goes down? can set up a hot availability (HA) using zookeper to have a hot standby
 
+### Lecture 13. MapReduce example: Break down movie ratings by rating score
+
+* our task is to count the ratings per score. (how many 5 star, how many 4 star etc)
+* we have to make it a mapreduce problem
+    * MAP each input line to (rating,1)
+    * REDUCE each rating withe the sum of all  the 1s
+* we want to use Python for our mapper and reducer functions so we have to use Streaming
+```
+def mapper_get_ratings(self, _, line):
+    (userID, movieID, rating, timestamp) = line.split('\t')
+    yield rating, 1
+```
+* second unused param is a key that we use when we chain a map->reduce->map so we get the key val pair from the reducer
+* line is each line of data
+* we do tuple upacking 
+* what we yield back is a key value pair
+* this is a lambda function
+* our reducer ih Python is simpler
+```
+def reducer_count_ratings(self, key, values)
+    yield key, sum(values)
+```
+* our complete Python script where we make use of the mrjob (mapreducejob) library
+```
+from mr
+```
