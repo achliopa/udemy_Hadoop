@@ -94,7 +94,7 @@ docker rm sandbox-proxy
 * u.data file contains the actual data it contains 4 cols of tab spaced data: uid, movieid, rating, timestamp
 * u.item contains the movie entries which are | delimited, movieid, moviename, relaease date, imdb link and some flags
 * we connect to our HDP sandbox via browser at port 8080 which throws us to Ambari
-* we login as maria_dev:maria_dev and see the Ambari dashboard which visualizes our cluster. dashboard and metrics is same if we run our cluster on one or multiple nodes, performance and capabilities change
+* we login as *maria_dev:maria_dev* and see the Ambari dashboard which visualizes our cluster. dashboard and metrics is same if we run our cluster on one or multiple nodes, performance and capabilities change
 * some metrics are not available because we run through docker (maybe?!)
 * we will use Hive to import the movie data to Hadoop cluster. Hive allows us to execute SQL queries on data.
 * we import first ratings
@@ -227,6 +227,16 @@ WHERE movie_id=50
     * Java Interface, or use a wrapper in other lang
     * NFS Gateway
 
+### Lecture 9. Installing the MovieLens Dataset
+
+* we connect to the sandbox 
+* in the amabari dashbard we click the menu icon and select file view
+* we see the HDFS as a disk
+* we go user=>maria_dev which is the current users home dir
+* we create a new folder for themovieles dataset: New Folder => ml-100k => add
+* go in and click upload and dump in u.data and u.item files
+* we can open and view a file (much like NAS functionality). we can download
+
 ### Lecture 11. MapReduce: What it is, and how it works
 
 * MapReduce
@@ -244,4 +254,26 @@ WHERE movie_id=50
 
 ### Lecture 12. How MapReduce distributes processing
 
-* 
+* we assume a cluster of 3 nodes and the previous lecture problem.
+* when storing the dataset on the cluster we assume its split in 3 parts and  sent to the 3 nodes for storing and processing
+* MAPPING cares for a single entry so its easy to parallelized across nodes
+* 'Suffle and sort" operation is spread across the networkk as it involves multiple parts (multiple merge sort operations)
+* REDUCERs also can run in parallel as they operate on one key so on one node
+* MapReduce task course of actions:
+    * 1) Client starts the action 
+    * 2a) Action is sent to Yarn Resource manager (it keeps track what runs on each machine)
+    * 2b) Data are sent from client to HDFS (it does its job)
+    * 3) Yarn Resource Manager spuns the map reduce application master which runs on nove manager
+    * 4) NodeManager works with YARN Resource Manager and distributes the job across the cluster
+    * 5) Nodes run Map Tasks, Reducer Tasks
+    * 6) Tasks are managed by the same NodeManager that taks to App Master
+* Manager sends the tasks as close to the data as possible
+* Mappers and Reducers are natively written in Java
+* STREAMING allows us to use Mappers and Reducers in other languages and use stdinput to send data and stdout to get data
+    * map tasks can ve kicked in with standard input and output
+* Handling Failure
+    * App Master monitors worker tasks for errors or hangup. It restarts as needed, preferrably on different node
+    * If app master goes down YARN will try to restart it
+    * if an entrire node goes down? resource manager will try to restart it
+    * what if resource manager goes down? can set up a hot availability (HA) using zookeper to have a hot standby
+
