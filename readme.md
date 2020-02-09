@@ -584,3 +584,18 @@ if __name__ == '__main__':
     * writing mappers and reducers by hand takes time and effort
     * pig introduces Pig latin, a scripting language that lets us use SQL-Like sysntax to define our map and reduce steps
     * Higly extensible with user-defined functions (UDFs)
+    * it can run on top of tez instead of mapreduce
+* Tez is much more efficient than Mapreduce on running jobs (up to 10x faster)
+* To run Pig scripts:
+    * use Grunt
+    * use Script
+    * use Ambari/Hue
+* Our first task is to find the oldest 5 star movies using Pig
+
+### Lecture 21. Example: Find the oldest movie with a 5-star rating using Pig
+
+* first thing we have to do in the script is to load the data into a 'relation' with a given schema
+```
+ratings = LOAD '/user/maria_dev/u.data' AS (userID:int, movieID:int, rating:int, ratingTime:int);
+```
+* the data is loaded as python tuples of sorts (userID,movieID,rating,ratingTime)
