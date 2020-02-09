@@ -316,5 +316,271 @@ def reducer_count_ratings(self, key, values)
 ```
 * our complete Python script where we make use of the mrjob (mapreducejob) library
 ```
-from mr
+from mrjob.job import MRJob
+from mrjob.step import MRStep
+
+class RatingsBreakdown(MRJob):
+    def steps(self):
+        return [
+            MRStep(mapper=self.mapper_get_ratings,
+                    reducer=self.reducer_count_ratings)
+        ]
+
+    def mapper_get_ratings(self,_,line):
+        (userID,movieID,rating,teimestamp) = line.split('\t')
+        yield rating,1
+
+    def reducer_count_ratings(self,key,values):
+        yield key, sum(values)
+
+if __name__ == '__main__':
+    RatingsBreakdown.run();
 ```
+* our MRJob is implemented in a class that extends it.
+* steps() method defines the
+* the lust likes allow us to run the script from command line
+* usually it is run in a streaming context
+
+### Lecture 15. [Activity] Installing Python, MRJob, and nano
+
+* we need to connect to the sandbox environment using port 2222 and the username/password
+* we need to switch to root `su root` (pssword is: hadoop)
+* it asks us to change pasword so we change it to a personal one (the usual)
+* For HDP 2.6.5
+    * we need to install pip `yum install python-pip`
+    * we need to use pip to install mrjob `pip install mrjob==0.5.11`
+    * we need to  install nano `yum install nano`
+* we need to wget [datafile](http://media.sundog-soft.com/hadoop/ml-100k/u.data) and the [script](http://media.sundog-soft.com/hadoop/RatingsBreakdown.py)
+
+### Lecture 16. [Activity] Code up the ratings histogram MapReduce job and run it
+
+* To run a Python mrjob
+* To run Py script locally `python RatingsBreakdown.py u.data`. this approach does not use hadoop at all. its good for testing with small dataset on host
+* To run a Py mrjob script on hadoop
+```
+python RatingsBreakdown.py -r hadoop --hadoop-streaming-jar /usr/hdp/current/hadoop-mapreduce-client/hadoop-streaming.jar u.data
+```
+* the hadoop-streaming-jar  flag is specific for hortonwroks as mrjob does not know where to fild the jar file for hadoop streaming on hadoop sandbox. on other cloud platforms its not needed
+* the py script we use is the none counting movie ratings that we have analyzed before
+* we run it locally first (we have seen the command). the output looks like
+```
+...
+Streaming final output from /tmp/RatingsBreakdown.maria_dev.20200209.190800.523952/output...
+"1"	6111
+"2"	11370
+"3"	27145
+"4"	34174
+"5"	21203
+Removing temp directory /tmp/Rat
+```
+* we run it on hadoop we use the command we have seen. the files are copied to HDFS and run. we get an extensive analysis and stats of the task as it is runnin on the cluster
+```
+Running step 1 of 1...
+  packageJobJar: [] [/usr/hdp/2.6.5.0-292/hadoop-mapreduce/hadoop-streaming-2.7.3.2.6.5.0-292.jar] /tmp/streamjob5828654335426169716.jar tmpDir=null
+  Connecting to ResourceManager at sandbox-hdp.hortonworks.com/172.18.0.2:8032
+  Connecting to Application History server at sandbox-hdp.hortonworks.com/172.18.0.2:10200
+  Connecting to ResourceManager at sandbox-hdp.hortonworks.com/172.18.0.2:8032
+  Connecting to Application History server at sandbox-hdp.hortonworks.com/172.18.0.2:10200
+  Total input paths to process : 1
+  number of splits:2
+  Submitting tokens for job: job_1581271908853_0001
+  Submitted application application_1581271908853_0001
+  The url to track the job: http://sandbox-hdp.hortonworks.com:8088/proxy/application_1581271908853_0001/
+  Running job: job_1581271908853_0001
+  Job job_1581271908853_0001 running in uber mode : false
+   map 0% reduce 0%
+   map 100% reduce 0%
+   map 100% reduce 100%
+  Job job_1581271908853_0001 completed successfully
+  Output directory: hdfs:///user/maria_dev/tmp/mrjob/RatingsBreakdown.maria_dev.20200209.191224.449994/output
+Counters: 49
+	File Input Format Counters 
+		Bytes Read=2088191
+	File Output Format Counters 
+		Bytes Written=49
+	File System Counters
+		FILE: Number of bytes read=800030
+		FILE: Number of bytes written=2072886
+		FILE: Number of large read operations=0
+		FILE: Number of read operations=0
+		FILE: Number of write operations=0
+		HDFS: Number of bytes read=2088549
+		HDFS: Number of bytes written=49
+		HDFS: Number of large read operations=0
+		HDFS: Number of read operations=9
+		HDFS: Number of write operations=2
+	Job Counters 
+		Data-local map tasks=2
+		Launched map tasks=2
+		Launched reduce tasks=1
+		Total megabyte-milliseconds taken by all map tasks=1935750
+		Total megabyte-milliseconds taken by all reduce tasks=909500
+		Total time spent by all map tasks (ms)=7743
+		Total time spent by all maps in occupied slots (ms)=7743
+		Total time spent by all reduce tasks (ms)=3638
+		Total time spent by all reduces in occupied slots (ms)=3638
+		Total vcore-milliseconds taken by all map tasks=7743
+		Total vcore-milliseconds taken by all reduce tasks=3638
+	Map-Reduce Framework
+		CPU time spent (ms)=3790
+		Combine input records=0
+		Combine output records=0
+		Failed Shuffles=0
+		GC time elapsed (ms)=288
+		Input split bytes=358
+		Map input records=100003
+		Map output bytes=600018
+		Map output materialized bytes=800036
+		Map output records=100003
+		Merged Map outputs=2
+		Physical memory (bytes) snapshot=579059712
+		Reduce input groups=5
+		Reduce input records=100003
+		Reduce output records=5
+		Reduce shuffle bytes=800036
+		Shuffled Maps =2
+		Spilled Records=200006
+		Total committed heap usage (bytes)=288882688
+		Virtual memory (bytes) snapshot=5843562496
+	Shuffle Errors
+		BAD_ID=0
+		CONNECTION=0
+		IO_ERROR=0
+		WRONG_LENGTH=0
+		WRONG_MAP=0
+		WRONG_REDUCE=0
+Streaming final output from hdfs:///user/maria_dev/tmp/mrjob/RatingsBreakdown.maria_dev.20200209.191224.449994/output...
+"1"	6111
+"2"	11370
+"3"	27145
+"4"	34174
+"5"	21203
+Removing HDFS temp directory hdfs:///user/maria_dev/tmp/mrjob/RatingsBreakdown.maria_dev.20200209.191224.449994...
+Removing temp directory /tmp/RatingsBreakdown.maria_dev.20200209.191224.449994..
+```
+
+### Lecture 17. [Exercise] Rank movies by their popularity
+
+* our task is to sort movies by popularity with Hadoop
+* we need to write a new py script and run it
+* all we need to do is to mod the mapper. instead of counting ratings. we count movieIDs
+```
+    def mapper_get_ratings(self,_,line):
+        (userID,movieID,rating,teimestamp) = line.split('\t')
+        yield movieID,1
+```
+* our new script is named MoviesPupularity.py
+```
+from mrjob.job import MRJob
+from mrjob.step import MRStep
+
+class MoviesPopularity(MRJob):
+    def steps(self):
+        return [
+            MRStep(mapper=self.mapper_get_movies,
+                    reducer=self.reducer_count_movies)
+        ]
+
+    def mapper_get_movies(self,_,line):
+        (userID,movieID,rating,teimestamp) = line.split('\t')
+        yield movieID,1
+
+    def reducer_count_movies(self,key,values):
+        yield key, sum(values)
+
+if __name__ == '__main__':
+    MoviesPopularity.run();
+```
+* we run the script localy and on hadoop. we get the ratings per movie but ids are not sorted by popularity. to do so
+    * map to (movieID,1) key/value pairs
+    * reduce with output of ratingCount, movieId
+    * send this to a second reducer so we end up with things sorted by rating count
+* Tricky parts.
+    * How do we set up more than one MapReduce step
+    * how do we ensure ratings counts are sorted properly
+* HINT: we can chain map/reduce stages together like this:
+```
+def steps(self):
+    return [
+        MRStep(mapper=self.mapper_get_movies,
+            reducer=self.reducer_count_movies),
+        MRStep(reducer=self.reducer_sorted_output)
+    ]
+```
+* KEEP IN MIND: by default, streaming treats all input and output as strings. Strings get sorted as strings. not numbers (we saw it in the simple solution output)
+* there are different formats we can specify. a workaround is to to zeropad the nums string so they sort properly
+* we do this on the first reducer that will look like
+```
+def reducer_count_movies(self,key,values):
+    yield str(sum(values)).zfill(5),key
+```
+* our second reducer will look like (we receive sorted counts)
+```
+def reducer_sorted_output(self, count, movies):
+    for movie in movies:
+        yield movie, count
+```
+
+### Lecture 18. [Activity] Check your results against mine!
+
+* our impoved script looks like
+
+```
+from mrjob.job import MRJob
+from mrjob.step import MRStep
+
+class MoviesPopularity(MRJob):
+    def steps(self):
+        return [
+            MRStep(mapper=self.mapper_get_movies,
+                    reducer=self.reducer_count_movies),
+            MRStep(reducer=self.reducer_sorted_output)
+        ]
+
+    def mapper_get_movies(self,_,line):
+        (userID,movieID,rating,teimestamp) = line.split('\t')
+        yield movieID,1
+
+    def reducer_count_movies(self,key,values):
+        yield str(sum(values)).zfill(5),key
+
+    def reducer_sorted_output(self, count, movies):
+        for movie in movies:
+            yield movie, count
+
+if __name__ == '__main__':
+    MoviesPopularity.run();
+```
+* we run it locally and we ge sorted correclty but in reverse
+* the lectures sample file is `http://media.sundog-soft.com/hadoop/TopMovies.py`
+
+## Section 3: Programming Hadoop with Pig
+
+### Lecture 19. Introducing Ambari
+
+* we will use Ambari to execute Pig scripts
+* we go again to Ambari dashboard
+* we can edit or move widgets
+* ambari can be used to install hadoop. when we install it from ready image on a vm we dont have to but when we want to start from scratch ambari is the first thing to install
+* The workflow is to setup a cluster => install ambari on the master node => install hadoop etc
+* in services tab we can see whats available
+* on hosts we can have a view on the host that runs ervices, start/stop them per host basis
+* many sevices offer config option using the config plugin of ambari
+* we go to pig => config => advanced pig properties there we can edit the config file for pig
+* in alerts we can view,disable, config them or set email notifications
+* logged in as maria does not give us priviledges to do management (enable, disable things, security) we need to log in as admin
+* tosetup admin: 
+    * login as maria_dev in the instance at port 2222  
+    * then switch to root
+    * as root run script `ambari-admin-password-reset`
+    * set a new password
+* relogin as admin using the new assword
+* with the menu button we can change view. we choose pig view
+
+### Lecture 20. Introducing Pig
+
+* mapreduce is considered a legacy way of doing data processing on hadoop
+* Apache PIG is a programming API that works as an abstraction from mapreduce accepting SQL like scripts
+    * writing mappers and reducers by hand takes time and effort
+    * pig introduces Pig latin, a scripting language that lets us use SQL-Like sysntax to define our map and reduce steps
+    * Higly extensible with user-defined functions (UDFs)
