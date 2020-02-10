@@ -594,8 +594,64 @@ if __name__ == '__main__':
 
 ### Lecture 21. Example: Find the oldest movie with a 5-star rating using Pig
 
-* first thing we have to do in the script is to load the data into a 'relation' with a given schema
+* first thing we have to do in the PIG-Latin SQLlike script is to load the data into a 'relation' with a given schema
+* this does the mappers job
 ```
 ratings = LOAD '/user/maria_dev/u.data' AS (userID:int, movieID:int, rating:int, ratingTime:int);
 ```
 * the data is loaded as python tuples of sorts (userID,movieID,rating,ratingTime)
+* we also want to load up u.item file (movieid - movie relation) which uses a special delimiter
+* again loading is doen intoa relation whose schema we pass in. 
+```
+metadata = LOAD '/user/maria_dev/u.item' USING PigStorage('|') AS (movieID:int,movieTitle:chararray,
+releaseDate:chararray,videoRelease:chararray,imdbLink:chararray);
+
+DUMP metadata;
+```
+* DUMP command dumps all contents to screen and is useful for debugging
+* then we create a relation from another relation. we use FOREACH / GENERATE for this isn an iterative fashion
+* this is a transformation or a second MAPPER of sorts. we get release date in a format we can sort by
+```
+nameLookup = FOREACH metadata GENERATE movieID, movieTitle, ToUnixTime(ToDate(releaseDate, ;dd-MMM-yyyy)) AS releaseTime;
+```
+* next we use GROUP BY to aggregate the ratings per movie. this creates a new relation a bag of tuples. 
+* this looks like a REDUCE operation
+```
+ratingsByMovie = GROUP ratings BY movieID;
+DUMP ratingsByMovie;
+```
+* to compute the ratings we go iteratively with FOREACH/GENERATE in a REDUCE op
+```
+avgRatings = FOREACH ratingsByMovie GENERATE group AS movieID, AFG(ratings.rating) AS avgRating;
+DUMP avgRatings
+```
+* we can dump the relations schemas so far with DESCRIBE
+```
+DESCRIBE ratings; 
+DESCRIBE ratingsByMovie;
+DESCRIBE avgRatings;
+```
+* we filter results with FILTER BY creating a new relation `fiveStarMovies = FILTER avgRatings BY avgRating > 4.0;`
+* we finally want to JOIN relations BY an index (foreign key) AKA a common field
+* this is the power of PIG. in MapReduce this requires a lot of work
+```
+DESCRIBE fiveStarMovies;
+DESCRIBE nameLookup;
+fiveStarsWithData = JOIN fiveStarMovies BY movieID, nameLookup BY movieID;
+DESCRIBE fiveStarsWithData;
+DUMP fiveStarsWithData;
+```
+* when we do JOIN the resulting relation schema fields look a bit wierd (JAVA Class quirks)
+```
+fiveStarsWithData: {fiveStarMovies::movieID: int,fiveStarMovies::avgRating: double, nameLookup::movieID: int,
+    nameLookup::movieTitle: chararray, nameLookup::releaseTime: long}
+```
+* we sort with ORDER BY
+```
+oldestFiveStarMovies = ORDER fiveStarsWithData BY nameLookup::releaseTime;
+DUMP oldestFiveStarMovies;
+```
+
+### Lecture 23. More Pig Latin
+
+* 
