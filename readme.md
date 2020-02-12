@@ -784,12 +784,12 @@ rows = hiveCtx.sql("SELECT name, age FROM users")
         * Cassandra
         * HBase
         * Elasticsearch
-        * JSON,CSV, sequence files, object files, various compressed formats
+        * JSON, CSV, sequence files, object files, various compressed formats
 * Once we create an RDD we can Transform it (MAPPERS) with:
     * map: (1:1 row relationship) (usually we use lambdas)
     * flatmap: any relationship between input output
     * filter
-    * distinct: kwwo only unique vals
+    * distinct: keep only unique vals
     * sample
     * union, intersection, subtract, cartesian
 * an example of map in Python `rdd.map(lambda x: x*x)`
@@ -805,6 +805,59 @@ rows = hiveCtx.sql("SELECT name, age FROM users")
     * reduce: define a REDUCER
     * ...
 * nothingactually happens in Spark untill we call an action on the RDD
+
+### Lecture 28. [Activity] Find the movie with the lowest average rating - with RDD's
+
+* we will have a look in an actual spark script in Python answering the question of the worst movies of all in movielens dataset using RDD interface
+* we need the sum of ratings and the ratings count for each movie
+* we need tuples of rating and count (1) and reduce them to one using sum
+* we import pyspark `from pyspark import SparkConf, SparkContext`
+* we use a function that creates a python dictionary we can later use to convert movieIDs to vovie names while printing out the final results
+```
+def loadMovieNames():
+    movieNames = {}
+    with open('ml-100k/uitam') as f:
+        for line in f:
+            fields = line.split('|')
+            movieNames[int(fields[0])] = fields[1]
+        return movieNames
+```
+* we use another helper function to load each line of u.data and convert it to (movieID,(rating, 1.0))
+* this way we can then add up all the ratings for each movie, and the total number of ratings for each movie (which lets us compute the average)
+```
+def parseInput(line):
+    fields = line.split()
+    return (int(fields[1]), (float(fields[2]), 1.0))
+```
+* in the main script `if __name__ == "___main__":`
+* we create our spark context
+```
+conf = SparkConf().setAppName("WorstMovies")
+sc = SparkContext(conf = conf)
+```
+* load up the movieID => movieName lookup table `movieNames = loadMovieNames()`
+* load up the raw u.data file into RDD `lines = sc.textFile("hdfs:///user/maria_dev/ml-100k/u.data")`
+* convert to (movieID, (raating, 1.0)) into a new RDD `movieRatings = lines.map(parseInput)`
+* reduce to (movieID, (sumOfRatings, totalRatings)) `ratingTotalsAndCount = movieRatings.reduceByKey(lambda movie1, movie2: ( movie1[0] + movie2[0], movie1[1] + movie2[1] ) )`
+* map to (movieID, averageRating) `averageRatings = ratingTotalsAndCount.mapValues(lambda totalAndCount: totalAndCout[0] / totalAndCount[1])`
+* sort by average Rating `sortedMovies = averageRatings.sortBy(lambda x: x[1])`
+* take the top 10 results `results = sortedMovies.take(10)`
+* print them out
+```
+for result in results:
+    print(movieNames[result[0]], result[1])
+```
+* we log in as admin in ambari to configure spark
+* from services select Spark2 => Config => Advanced log4j properties
+* we ned to make logs less verbose . set `log4j.rootCategory=INFO` to ERROR and save config
+ => restart services
+ * we go to Files View and confirm data files are in maria-dev folder
+ * we log in to maria dev on port 2222 add dir `mkdir ml-100k` and `wget http://media.sundog-soft.com/hadoop/ml-100k/u.item`
+* we download there all section scripts `wget http://media.sundog-soft.com/hadoop/Saprk.zip` and unzip
+* our script is LowestRatedMoviesSpark.py. we run it with `spark-submit LowestRatedMoviesSpark.py`
+* spark submit allows us to run python on spark cluster not on single process on host
+* the resutlts come FAST
+* spark-submit takes command line params
 
 ### Lecture 29. Datasets and Spark 2.0
 
@@ -847,3 +900,7 @@ hiveCtx.registerFunction("square",lambda x:x*x, IntegerType())
 df = hiveCtx.sql("SELECT square('someNumericField') FROM tableName")
 ```
 * DataSets is the standard in new Spark libs 
+
+### Lecture 30. [Activity] Find the movie with the lowest average rating - with DataFrames
+
+* 
