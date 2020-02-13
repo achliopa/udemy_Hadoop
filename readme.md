@@ -597,13 +597,13 @@ if __name__ == '__main__':
 * first thing we have to do in the PIG-Latin SQLlike script is to load the data into a 'relation' with a given schema
 * this does the mappers job
 ```
-ratings = LOAD '/user/maria_dev/u.data' AS (userID:int, movieID:int, rating:int, ratingTime:int);
+ratings = LOAD '/user/maria_dev/ml-100k/u.data' AS (userID:int, movieID:int, rating:int, ratingTime:int);
 ```
 * the data is loaded as python tuples of sorts (userID,movieID,rating,ratingTime)
 * we also want to load up u.item file (movieid - movie relation) which uses a special delimiter
 * again loading is doen intoa relation whose schema we pass in. 
 ```
-metadata = LOAD '/user/maria_dev/u.item' USING PigStorage('|') AS (movieID:int,movieTitle:chararray,
+metadata = LOAD '/user/maria_dev/ml-100k/u.item' USING PigStorage('|') AS (movieID:int,movieTitle:chararray,
 releaseDate:chararray,videoRelease:chararray,imdbLink:chararray);
 
 DUMP metadata;
@@ -612,7 +612,7 @@ DUMP metadata;
 * then we create a relation from another relation. we use FOREACH / GENERATE for this isn an iterative fashion
 * this is a transformation or a second MAPPER of sorts. we get release date in a format we can sort by
 ```
-nameLookup = FOREACH metadata GENERATE movieID, movieTitle, ToUnixTime(ToDate(releaseDate, ;dd-MMM-yyyy)) AS releaseTime;
+nameLookup = FOREACH metadata GENERATE movieID, movieTitle, ToUnixTime(ToDate(releaseDate, 'dd-MMM-yyyy')) AS releaseTime;
 ```
 * next we use GROUP BY to aggregate the ratings per movie. this creates a new relation a bag of tuples. 
 * this looks like a REDUCE operation
@@ -622,7 +622,7 @@ DUMP ratingsByMovie;
 ```
 * to compute the ratings we go iteratively with FOREACH/GENERATE in a REDUCE op
 ```
-avgRatings = FOREACH ratingsByMovie GENERATE group AS movieID, AFG(ratings.rating) AS avgRating;
+avgRatings = FOREACH ratingsByMovie GENERATE group AS movieID, AVG(ratings.rating) AS avgRating;
 DUMP avgRatings
 ```
 * we can dump the relations schemas so far with DESCRIBE
@@ -651,6 +651,33 @@ fiveStarsWithData: {fiveStarMovies::movieID: int,fiveStarMovies::avgRating: doub
 oldestFiveStarMovies = ORDER fiveStarsWithData BY nameLookup::releaseTime;
 DUMP oldestFiveStarMovies;
 ```
+
+### Lecture 22. [Activity] Find old 5-star movies with Pig
+
+* login to ambari as maria_dev
+* we verify the files we need are in HDFS so  go to Files View
+* go to /users/maria_dev create a new folder ml-100k and upload u.data and u.items
+* we go to Pig View hit New Script. give it a name and OK
+* we see an editor
+* we CP previous scirpt snippets into 1 and hit execute
+```
+ratings = LOAD '/user/maria_dev/ml-100k/u.data' 
+AS (userID:int, movieID:int, rating:int, ratingTime:int);
+metadata = LOAD '/user/maria_dev/ml-100k/u.item' USING PigStorage('|') 
+AS (movieID:int,movieTitle:chararray,
+releaseDate:chararray,videoRelease:chararray,imdbLink:chararray);
+nameLookup = FOREACH metadata GENERATE movieID, movieTitle, ToUnixTime(ToDate(releaseDate, 'dd-MMM-yyyy')) AS releaseTime;
+ratingsByMovie = GROUP ratings BY movieID;
+avgRatings = FOREACH ratingsByMovie GENERATE group AS movieID, AVG(ratings.rating) AS avgRating;
+fiveStarMovies = FILTER avgRatings BY avgRating > 4.0;
+fiveStarsWithData = JOIN fiveStarMovies BY movieID, nameLookup BY movieID;
+oldestFiveStarMovies = ORDER fiveStarsWithData BY nameLookup::releaseTime;
+DUMP oldestFiveStarMovies;
+```
+* script is converted into mapreduce code and executes
+* we can select it to run on tez to go faster
+* we can see the log and the script in results
+* we click execute on tex and hot execute...
 
 ### Lecture 23. More Pig Latin
 
@@ -694,3 +721,227 @@ DUMP oldestFiveStarMovies;
     * ParquetLoader
     * OrcStorage
     * HBaseStorage
+* 
+
+### Lecture 24. [Exercise] Find the most-rated one-star movie
+
+* Challenge: find the most popular bad movies. (lowest rated with most reviews)
+    * find all movies with an average rating less than 2.0
+    * sort them by total number of ratings
+* HINT: we have everything we need from earlier example
+    * we ned to use COUNT. to count items in a bag of tuples
+    * so as we can use AVG(ratings.rating) to get average rating we can use COUNT(ratings.rating) to get total num of ratings in a group bag
+* our attempt
+```
+ratings = LOAD '/user/maria_dev/ml-100k/u.data' 
+AS (userID:int, movieID:int, rating:int, ratingTime:int);
+metadata = LOAD '/user/maria_dev/ml-100k/u.item' USING PigStorage('|') 
+AS (movieID:int,movieTitle:chararray,
+releaseDate:chararray,videoRelease:chararray,imdbLink:chararray);
+nameLookup = FOREACH metadata GENERATE movieID, movieTitle;
+ratingsByMovie = GROUP ratings BY movieID;
+avgRatings = FOREACH ratingsByMovie GENERATE group AS movieID, AVG(ratings.rating) AS avgRating, COUNT(ratings.rating) AS numRatings;
+badMovies = FILTER avgRatings BY avgRating < 2.0;
+badMoviesWithData = JOIN badMovies BY movieID, nameLookup BY movieID;
+finalResults = FOREACH badMoviesWithData GENERATE nameLookup::movieTitle AS movieName,
+badMovies::avgRating AS avgRating, badMovies::numRatings AS numRatings;
+popularBadMovies = ORDER finalResults BY numRatings DESC;
+DUMP popularBadMovies;
+```
+
+## Section 4: Programming Hadoop with Spark
+
+### Lecture 26. Why Spark?
+
+* Many things are built on top of Apache Spark. ML, Streaming, Graph Analysis
+* Apache Spark: A fast and general engine for large-scale data processing
+* Builds on Hadoop but offers Hig Level Lang API to do complex analalysis
+* It boasts a lot of addon feats a whole ecosystem to do Advanced ML, DNNs etc.
+* Highly Sacalable uses Hadoop Architecture:
+    * Driver Program (Spark Context) => Cluster Manager (Spark, Yarn)
+    * Cluster Manager => Executor Node (Cache, Tasks)
+    * Executor Node <=> Executor Node (Intermediate results)
+    * Driver Program => Executor Node (Data)
+* Spark can run on its own Flavor of Hadoop, use other middleware instead of YARN (MESOS)
+* Cache is critical to performance: Spark will keep as much data as possible to RAM as cache to speed up processing
+* It's FAST! it can run programs up to 100x faster than Hadoop MapReduce in memory or 10x faster on disk
+* DAG Engine (Directed Acyclic Graph) optimizes workflows
+* Spark is used in:
+    * AMAZON
+    * Ebay: log analysis and aggregation
+    * NASA JPL: Deep Space Network
+    * Groupon
+    * TripAdvisor
+    * Yahoo
+    * Many many others
+* Code in Python,Java,Scala
+* Built around one main Concept: The Resilient Distributed Dataset (RDD)
+* IN Spark 2.0 RDD is replaced by Dataset
+* Although we can program at RDD level against the Spark Core there are various Components (libs) built on top of it like:
+    * Spark Streaming
+    * Spark SQL
+    * MLLib
+    * GraphX
+* Straaming redefines the batch data input that spark does by supporting RT streaming against the cluster
+* Spark SQL is the direction of Spark right now as it supports more optimization in processing that DAG
+* We choose to use Python
+    * its simpler
+    * dont need compiling, dependencies etc
+* But
+    * Spark is written in Scala
+    * Scala functional programming model is a good fit for distributted processing
+    * Better performance (Scala compiles to Java Bytecode)
+    * Less code than Java
+* Scala code in Spark looks a LOT like Python code
+* Python code to square nums in dataset:
+```
+nums = sc.parallelize([1,2,3,4])
+squared = nums.map(lambda x: x*x).collect()
+```
+* Scala code to square nums in a dataset:
+```
+val nums = sc.parallelize(List(1,2,3,4))
+val squared = nums.map(x => x*x).collect()
+```
+
+### Lecture 27. The Resilient Distributed Dataset (RDD)
+
+* Its an abstraction of underlying complexity
+* How to create RDDs: using the Spark Context (sc)
+    * is created by our driver program
+    * is responsible for making RDDs resilient and distributed
+    * Creates RDDs
+    * The Spark shell creates an "sc" object for us or we can create it in a script
+* Creating RDDs (Python)
+    * `nums = parallelize([1,2,3,4` explicitly create from alist of vals
+    * `sc.textFile("file:///c:/users/mari_dev/gobs-o-text.txt")`  load from an HDD file  or use s2 "s3n://" or hdfs "hdfs://"
+    * from hive use SQL to get data from spark and process them as RDD
+```
+hiveCtx = HiveContext(sc) 
+rows = hiveCtx.sql("SELECT name, age FROM users")
+```
+    * Can also create from
+        * JDBC
+        * Cassandra
+        * HBase
+        * Elasticsearch
+        * JSON, CSV, sequence files, object files, various compressed formats
+* Once we create an RDD we can Transform it (MAPPERS) with:
+    * map: (1:1 row relationship) (usually we use lambdas)
+    * flatmap: any relationship between input output
+    * filter
+    * distinct: keep only unique vals
+    * sample
+    * union, intersection, subtract, cartesian
+* an example of map in Python `rdd.map(lambda x: x*x)`
+* lambdas in python are inline functions elements of functional programming concept
+* apart from map many RDD methods accept a function as a param which is applied over the whole dataset iteratively
+* if calculations are complex we use a proper function that we pass in the RDD method. otherwise for one liners lambda does the trick
+* RDD actions (REDUCERS)
+    * collect: take all vals of RDD and pass them to driver script (python obj)
+    * count
+    * countByValue (count per unique val)
+    * take: take some results
+    * top: get only top vals
+    * reduce: define a REDUCER
+    * ...
+* nothingactually happens in Spark untill we call an action on the RDD
+
+### Lecture 28. [Activity] Find the movie with the lowest average rating - with RDD's
+
+* we will have a look in an actual spark script in Python answering the question of the worst movies of all in movielens dataset using RDD interface
+* we need the sum of ratings and the ratings count for each movie
+* we need tuples of rating and count (1) and reduce them to one using sum
+* we import pyspark `from pyspark import SparkConf, SparkContext`
+* we use a function that creates a python dictionary we can later use to convert movieIDs to vovie names while printing out the final results
+```
+def loadMovieNames():
+    movieNames = {}
+    with open('ml-100k/uitam') as f:
+        for line in f:
+            fields = line.split('|')
+            movieNames[int(fields[0])] = fields[1]
+        return movieNames
+```
+* we use another helper function to load each line of u.data and convert it to (movieID,(rating, 1.0))
+* this way we can then add up all the ratings for each movie, and the total number of ratings for each movie (which lets us compute the average)
+```
+def parseInput(line):
+    fields = line.split()
+    return (int(fields[1]), (float(fields[2]), 1.0))
+```
+* in the main script `if __name__ == "___main__":`
+* we create our spark context
+```
+conf = SparkConf().setAppName("WorstMovies")
+sc = SparkContext(conf = conf)
+```
+* load up the movieID => movieName lookup table `movieNames = loadMovieNames()`
+* load up the raw u.data file into RDD `lines = sc.textFile("hdfs:///user/maria_dev/ml-100k/u.data")`
+* convert to (movieID, (raating, 1.0)) into a new RDD `movieRatings = lines.map(parseInput)`
+* reduce to (movieID, (sumOfRatings, totalRatings)) `ratingTotalsAndCount = movieRatings.reduceByKey(lambda movie1, movie2: ( movie1[0] + movie2[0], movie1[1] + movie2[1] ) )`
+* map to (movieID, averageRating) `averageRatings = ratingTotalsAndCount.mapValues(lambda totalAndCount: totalAndCout[0] / totalAndCount[1])`
+* sort by average Rating `sortedMovies = averageRatings.sortBy(lambda x: x[1])`
+* take the top 10 results `results = sortedMovies.take(10)`
+* print them out
+```
+for result in results:
+    print(movieNames[result[0]], result[1])
+```
+* we log in as admin in ambari to configure spark
+* from services select Spark2 => Config => Advanced log4j properties
+* we ned to make logs less verbose . set `log4j.rootCategory=INFO` to ERROR and save config
+ => restart services
+ * we go to Files View and confirm data files are in maria-dev folder
+ * we log in to maria dev on port 2222 add dir `mkdir ml-100k` and `wget http://media.sundog-soft.com/hadoop/ml-100k/u.item`
+* we download there all section scripts `wget http://media.sundog-soft.com/hadoop/Saprk.zip` and unzip
+* our script is LowestRatedMoviesSpark.py. we run it with `spark-submit LowestRatedMoviesSpark.py`
+* spark submit allows us to run python on spark cluster not on single process on host
+* the resutlts come FAST
+* spark-submit takes command line params
+
+### Lecture 29. Datasets and Spark 2.0
+
+* Working with structured Data
+* Spark extends RDD to a "DataFrame" object
+* DataFrames:
+    * Contain Row objects
+    * Can run SQL queries
+    * Has a Schema (leading to more efficient storage)
+    * Read and Write to JSON,Hive,parquet
+    * Communicates with JDBC/ODBC, Tableau
+* looks like NoSQL documents collection
+* Using SparkSQL in Python
+    * `from pyspark.sql import SQLContext, Row` we import it in our script
+* Ways to create DataFrame using Python
+    * `hiveContext = HiveContext(sc)` from Hive DB
+    * `inputData = spark.read.json(dataFile)` from JSON file
+    * `inputData.createOrReplaceTempView('myStructuredStuff')` create a DB table from DataFrame
+    * `myResultDataFrame = hiveContext.sql(""SELECT foo FROM bar ORDER BY foobar"")` once we have it we can issue SQL queries on it
+* Other things we can do with dataFrames
+    * `myResultDataFrame.show()`
+    * `myResultDataFrame.select("someFieldname")` select a column
+    * `myResultDataFrame.filter(myResultDataFrame("someFieldName" > 200))` apply a filter menthod
+    * `myResultDataFrame.groupBy(myResultDataFrame("someFieldName")).mean()` group by like in SQL and chain methods
+    * `myResultDataFrame.rdd().map(mapperFunction)` extract the rdd and perform transformations or actions
+* In Spark 2.0 a DataFrame is really a DataSet of Row objects
+* DataSets can wrap known, typed data too, not only rows from files etc. But this is mostly transparent to you in Python, since Python is dynamically typed
+* So we dont have to care so much about DataSets  when we use Python. However in Spark 2.0 DataSets is the standard
+* We can even start an SQL server with SparkSQL and connect to it
+* Sprk SQL exposes a JDBC/ODBC server (if we buld Spark with Hive support)
+    * we can start it with `sbin/start-thriftserver.sh`
+    * listens on prot 10000 by default
+    * Connect using `sbin/beeline -u jdbc:hive2://localhost:10000`
+    * and we have an SQL shell to Spark SQL
+    * we can create tables, query existing ones that were cached using `hiveCtx.cacheTable("tableName")`
+* Spark SQL is extensible, we can create UDFs (user defined functions) and plug them in SQL
+```
+from pyspark.sql.types import IntegerType
+hiveCtx.registerFunction("square",lambda x:x*x, IntegerType())
+df = hiveCtx.sql("SELECT square('someNumericField') FROM tableName")
+```
+* DataSets is the standard in new Spark libs 
+
+### Lecture 30. [Activity] Find the movie with the lowest average rating - with DataFrames
+
+* 
