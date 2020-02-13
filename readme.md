@@ -878,6 +878,7 @@ sc = SparkContext(conf = conf)
 ```
 * load up the movieID => movieName lookup table `movieNames = loadMovieNames()`
 * load up the raw u.data file into RDD `lines = sc.textFile("hdfs:///user/maria_dev/ml-100k/u.data")`
+* note that u.data is loaded from hdfs!!! no need to be in the server locally per se like u.item
 * convert to (movieID, (raating, 1.0)) into a new RDD `movieRatings = lines.map(parseInput)`
 * reduce to (movieID, (sumOfRatings, totalRatings)) `ratingTotalsAndCount = movieRatings.reduceByKey(lambda movie1, movie2: ( movie1[0] + movie2[0], movie1[1] + movie2[1] ) )`
 * map to (movieID, averageRating) `averageRatings = ratingTotalsAndCount.mapValues(lambda totalAndCount: totalAndCout[0] / totalAndCount[1])`
@@ -928,7 +929,7 @@ for result in results:
 * DataSets can wrap known, typed data too, not only rows from files etc. But this is mostly transparent to you in Python, since Python is dynamically typed
 * So we dont have to care so much about DataSets  when we use Python. However in Spark 2.0 DataSets is the standard
 * We can even start an SQL server with SparkSQL and connect to it
-* Sprk SQL exposes a JDBC/ODBC server (if we buld Spark with Hive support)
+* Spark SQL exposes a JDBC/ODBC server (if we buld Spark with Hive support)
     * we can start it with `sbin/start-thriftserver.sh`
     * listens on prot 10000 by default
     * Connect using `sbin/beeline -u jdbc:hive2://localhost:10000`
@@ -944,4 +945,146 @@ df = hiveCtx.sql("SELECT square('someNumericField') FROM tableName")
 
 ### Lecture 30. [Activity] Find the movie with the lowest average rating - with DataFrames
 
-* 
+* in Spark2 and using DataFrames we will not use SparkContext and Config but SparkSession
+* SparkSession wraps SparkContext and SqlContext
+* The concept is that we open a SparkSession and we leave it open while our script executes.
+* In our script we run queries in the session. when we finish we terminate it
+* we will rewrite the previous script with same functionality using Sessions and DataFrames
+* we import libs from pyspark.sql
+```
+from pyspark.sql import SparkSession
+from pyspark.sql import Row
+from pyspark.sql import functions
+```
+* we defines our helper methods like before to make the dictionary and load master data
+```
+def loadMovieNames():
+    movieNames = {}
+    with open("ml-100k/u.item") as f:
+        for line in f:
+            fields = line.split('|')
+            movieNames[int(fields[0])] = fields[1]
+    return movieNames
+
+def parseInput(line):
+    fields = line.split()
+    return Row(movieID = int(fields[1]), rating = float(fields[2]))
+```
+* in our main script `if __name__ == "__main__":`
+* we create a SparkSession `spark = SparkSession.builder.appName("PopularMovies").getOrCreate()`
+* load up our movie ID => name dictionary `movie names = loadMovieNames()`
+* get the raw data the oldschool way`lines = spark.sparkContext.textFile("hdfs:///user/maria_dev/ml-100k/u.data")`
+* spark2 supports reading file directly in DataFrame
+* convert it to RDD of Row objects with (movieID,, rating) `movies = lines.map(parseInput)`
+* convert RDD to DataFrame `movieDataset = spark.createDataFrame(movies)`
+* compute average rating for each movie ID (reduction) `averageRatings = movieDataset.groupBy("movieID").avg("rating")`
+* compute count of ratings for each movieID `counts = movieDataset.groupBy("movieID").count()`
+* join the 2 together (we ll have movieID,avg(rating) and count columns) `averagesAndCounts = counts.join(averageRatings, "movieID")`
+* pull top 10 results `topTen = averagesAndCounts.orderBy("avg(rating)").take(10)`
+* print them out. convering ids to names on the fly
+```
+for movie in TopTen:
+    print(movieNames[movie[0]], movie[1], movie[2])
+```
+* stop the session `saprk.stop()`
+* we log in maria_dev port 2222 and use the script  LowestRatedMovieDataFrame.py which we went through above
+* note that u.data is loaded from hdfs!!! no need to be in the server locally per se like u.item
+* if we want to be sure we run Spark2 (in HDP 2.6.5 is default) we `export SPARK_MAJOR_VERSION=2` we can verify version with `echo $SPARK_MAJOR_VERSION`
+* run script on cluster with `spark-submit LowestRatedMovieDataFrame.py` BANG! success!! 
+* it takes a bit more time than pure oldschool RDD
+
+### Lecture 31. [Activity] Movie recommendations with MLLib
+
+* our use of Spark so far does not harness its capabilities. we did things we could do in MapReduce or Pig
+* we will now ue MovieLens dataset to recommend movies to a user using the MLLib
+* we start with the imports
+```
+from pyspark.sql import SparkSession
+from pyspark.ml.recommendation import ALS
+from pyspark.sql import Row
+from pyspark.sql.functions import lit
+```
+* add the dictionary build method from u.item
+```
+def loadMovieNames():
+    movieNames = {}
+    with open("ml-100k/u.item") as f:
+        for line in f:
+            fields = line.split('|')
+            movieNames[int(fields[0])] = fields[1].decode('ascii','ignore')
+    return movieNames
+```
+* add function to convert u.data lines into (userID, movieID, rating) rows
+```
+def parseInput(line):
+    fields = line.value.split()
+    return Row(userID = int())
+```
+* in the main script `if __name__ == "__main__"`
+* create a spark session (config is only for Windows) `spark = SparkSession.builder.appName("MovieRecs").getOrCreate()`
+* load up our movie ID -> name directory `movieNames = loadMovieNames()`
+* get raw data `lines = spark.read.text("hdfs:///user/maria_dev/ml-100k/u.data").rdd`
+* convert it to an RDD of Row objects with (userID,movieID,rating) `ratingsRDD = lines.map(parseInput)`
+* convert it to DataFrame and cache it `ratings = spark.createDataFrame(ratingsRDD).cache()`
+* we cache to avoid accidental recreation of DataFrame
+* create an ALS collaborative filtering model from the complete data set
+* we ll pass in all ratings. then we will throw in an id and try to predict wis rating for a movie without knowing if he has seen it
+```
+als = ALS(maxIter=5,regParam=0.01,userCol="userID",itemCol="movieID",ratingCol="rating")
+model = als.fit(ratings)
+```
+* we then create a new user 0 (hardcoded to dat file) passin in 3 ratings for movies
+* print out ratings for user 0:
+```
+print("\nRatings for user ID 0:")
+userRatings = ratings.filter("userID = 0")
+for rating in userRatings.collect():
+    print movieNames[rating['movieID']], rating['rating']
+print("\nTop 20 Recommendations")
+```
+* find movies rated more than 100times `ratingCounts = ratings.groupBy("movieID").count().filter("count > 100")`
+* construct a test dataset for User 0 with every movie rated > 100 timestamp
+* no ratings there they will be added by predictions
+```
+popularMovies = ratingCounts.select("movieID").withColumn("userID",lit(0))
+```
+* run the model on that list of popular movies for user ID 0 `recommendations = model.transform(popularMovies)`
+* get the top 20 movies with the highest predicted rating for this user 
+```
+topRecommendations = recommendations.sor(recomendations.prediction.dec()).take(20)
+for recommendation in topRecommendations:
+    print (movieNames[recommendation['movieID']], recommendation['prediction])
+```
+* stop session `spark.stop()`
+* we add these lines to u.data in hdfs
+```
+0   50  5   881250949
+0   172 5   881250949
+0   133 1   881250949
+```
+* we run the sript `spark-submit MovieRecommendationsALS.py`
+
+### Lecture 32. [Exercise] Filter the lowest-rated movies by number of ratings
+
+* our examples of finding the lowest rated movies were polluted with movies only rated by very few people
+* modify one or both of the previous scripts to only consider movies with at least 10 ratings
+* filter is our friend
+* RDDs have a filter() fuction we can use.
+    * it takes a function as a parameter, that accepts the entire key/value pair
+    * so if we are calling filter() on an RDD that contains (movieID,(sumOfRatings,totalRatings))
+    * a lambda function that takes in "x" would refer to totalRatings as `x[1][1]`
+    * `x[1]` gives us the value (sumOfRatings,totalRatings)
+    * this function should be an expresion that returns True if the row should be kept, or False if it should be disarded
+* DatFrames also have filter() function
+    * its easier - we just pass a string expression for what we want to filter on
+    * for example: df.filter("count>10") would only pass through rows where the count column is >10
+* in RDD script LowestRatedMovieSpark we add
+```
+#Filter out movies rated 10 or fewer times
+    popularTotalsAndCount = ratingTotalsAndCount.filter(lambda x: x[1][1] > 10)
+```
+* in DataFrame script LowestRatedMovieDataFrame we add
+```
+# Filter movies rated 10 or fewer times
+popularAveragesAndCounts = averagesAndCounts.filter("count > 10")
+```
