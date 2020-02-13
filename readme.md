@@ -654,4 +654,43 @@ DUMP oldestFiveStarMovies;
 
 ### Lecture 23. More Pig Latin
 
-* 
+* Main PIG Latin  Functions
+    * LOAD to load files into relations
+    * STORE to write rlations to files `STORE ratings INTO 'outRatings' USING PigStorage(':);`
+    * DUMP relation to console
+    * FILTER BY filter things in a relation based on a bolean expression
+    * DISTINCT find unique vals in a relation
+    * FOREACH / GENERATE iterate across relation and do transformations creating new relation
+    * MAPREDUCE allows us to call explicitly MAPPERS and REDUCERS going oldschool
+    * STREAM stream results of PIG operations to a process (instead of stdout)
+    * SAMPLE create ramdom samples out of a relation
+    * JOIN combine two relations on a common column
+    * COGROUP like JOIN bt creating a nested structure of tuple in tuple
+    * GROUP aggregate (REDUCE)
+    * CROSS cartesian product (all combinations between relations) like geting similarities (uses 2 cols)
+    * CUBE like cross but using 3 columns
+    * ORDER sort
+    * RANK like sort but assinging a rank to each row
+    * LIMIT limit results (good for debugging) LIMIT => DUMP
+    * UNION takes 2 relations and squezes them together
+    * SPLIT splits relations in >1 relations
+* Diagnostics
+    * DESCRIBE printout relation schema
+    * EXPLAIN like SQL gives insight on how the Query will be executed
+    * ILLUSTRATE takes a sample of a relations and applyes the query as a test to see the outcome
+* Other PIg Functions
+    * AVG
+    * CONCAT
+    * COUNT
+    * MAX
+    * MIN
+    * SIZE
+    * SUM
+* Pig Loaders
+    * PigStorage
+    * TextLoader
+    * JsonLoader
+    * AvroStorage
+    * ParquetLoader
+    * OrcStorage
+    * HBaseStorage
