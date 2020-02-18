@@ -1088,3 +1088,106 @@ for recommendation in topRecommendations:
 # Filter movies rated 10 or fewer times
 popularAveragesAndCounts = averagesAndCounts.filter("count > 10")
 ```
+
+## Section 5: Using relational data stores with Hadoop
+
+### Lecture 34. What is Hive?
+
+* Apache Hive translates SQL queries to MapReduce or Tez jobs on the cluster 
+* Why to use Hive
+    * it uses standard SQL syntax (HiveQL)
+    * Interactive
+    * Scalable as it scales with Hadoop cluster (Good fit for data warehouse apps)
+    * Easy OLAP (online analytics) queries - much easier than writinf mapReduce in java
+    * Optimized for performance
+    * Higly extensible (UDFs, Thrift server, JDBC/ODBC driver)
+* WHy not to use Hive
+    * High latency - not approptiate for OLTP (online transaction processing). latency is introduces by MapReduce
+    * Stores data de-normalized (flat files)
+    * SQl is limitied in capabilities (Spark can do complex stuff)
+    * No transactions
+    * No record level CRUD ops
+* HiveQL
+    * Pretty much MySQL with some extensions
+    * For example: View (can store results of a query in a View,which subsequent queries can use as a table)
+    * Allows us to specify how structured data is stored and partitioned
+
+### Lecture 36. How Hive works
+
+* In real Relational DBs we have Schema on Write. we define it before we load data to it
+* Hive uses Schema On Read. it takes unstructured data and applies a schema as they are read. 
+* data is stored as tab files (unstructured) on HDFS
+* Hive maintains a "metastore" that imparts a structure you define (schema) on the unstructured data 
+* in the previous example we used Ambari to issue SQL on hive and load data
+* in a real world scenario f using Hive we would issue SQL queries programmaticaly like below where we
+    * create a table
+    * define how to parse the data we want to load the unstructured data as a table
+    * next we load the data and put it in a table
+* HDFS is a ll about big data. it would be inefficient to keep massive tables of data we have already on the cluster
+```
+CREATE TABLE ratings (
+    userId INT,
+    movieID INT,
+    rating INT,
+    time INT
+)
+ROW FORMAT DELIMTED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE;
+
+LOAD DATA LOCAL INPATH '${env:HOME}/ml-100k/u.data'
+OVERWRITE INTO TABLE ratings;
+```
+* `LOAD DATA` moves data from HDFS into Hive (Best Apporach for BigData already in the cluster)
+* it does not move the data, just the schema in its metadata store
+* `LOAD DATA LOCAL` COPIES data from local FS into Hive (no BigData on the local machine)
+* both operations result in Managed data (Managed tables by Hive). if we do a Drop table in Hive data will be gone
+* Managed vs External Tables
+```
+CREATE EXTERNAL TABLE IF NOT EXISTS ratings (
+    userId INT,
+    movieID INT,
+    rating INT,
+    time INT
+)
+ROW FORMAT DELIMTED FIELDS TERMINATED BY '\t'
+LOCATION '/data/ml-100k/u.data';
+```
+* External tables store data on a palce accesible from othe rsystems. if we drop the table in Hive metadata will be gone but not the actual data
+* Partitioning: we can store our data in partitioned subdirectories. We get HUGE optimization if our queries are targeted to certain partitions
+```
+CREATE TABLE customers (
+    name STRING,
+    address STRUCT<street:STRING,city:STRING,state:STRING,zip:INT>
+)
+PARTITIONED BY (country:STRING);
+```
+* data end up in folders like `../customers/country=CA/` or `../customers/country=GB/`
+* we saw an example of structuring data in tables in Hive DBs using STRUCT
+* How to use Hive
+    * Interactive via `hive>` CLI promt
+    * save queries in .hql files and eun hive on them `hive -f /path/query.hql`
+    * with Ambari,Hue
+    * with JDBC,ODBC server
+    * Through a Thrift service (But HIVe is not suitable for OLTP)
+    * with Oozie (manage tool)
+
+### Lecture 39. Integrating MySQL with Hadoop
+
+* Sqoop allows import/export of data between HDFS and real SQL DBs (like MySQL)
+* MySQL is a popular, free relational DB
+* Denerally monolithic in nature
+* It can be used for OLTP (exposing data into MySQL can be useful)
+* Existing data might be in MySQL for us to import
+* Sqoop can handle Big Data (it kicks off MapReduce jobs to handle importing/exporting data)
+* syntax (import data from MySQL to HDFS) `sqoop import --connect jdbc:mysql://localhost/movieles --driver com.mysql.jdbc.Driver --table movies`
+* `-m` flag defines the number of mappers to kick in for the job
+* to import data from MySQL directly into Hive table `sqoop import --connect jdbc:mysql://localhost/movieles --driver com.mysql.jdbc.Driver --table movies --hive-import`
+* with Sqoop we can do incremental imports to keep our DB and Hadoop in sync
+    * use `--check-column` and `--last-value`
+* example: export data from Hive to MySQL 
+```
+sqoop export --connect jdbc:mysql://localhost/movieles  -m 1 \
+--driver com.mysql.jdbc.Driver --table exported_movies --export-dir \
+/apps/hive/warehouse/movies --input-fields-terminated-by '\0001' \
+```
+* target table must already exist in MySQL, with columns in expected order
