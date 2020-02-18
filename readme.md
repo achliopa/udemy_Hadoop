@@ -1112,6 +1112,43 @@ popularAveragesAndCounts = averagesAndCounts.filter("count > 10")
     * For example: View (can store results of a query in a View,which subsequent queries can use as a table)
     * Allows us to specify how structured data is stored and partitioned
 
+### Lecture 35. [Activity] Use Hive to find the most popular movie
+
+* we launch our cluster and login to Ambari as maria_dev
+* we ll repeat the exercise we did when we tested our cluster with Hive.
+* now we will get back the moive names and not just ids of most popular movies
+* we got to Hive View
+* we are ready to write and execute queries but we need data to work on
+* if we have ratings table from prev exercise in the defaul DB delete it with `DROP TABLE ratings` and hit refresh
+* we upload data in Hive with Ambari.
+* we now that our data is tabular TAB separated. we go to 'Upload Table' => 'Settings' => Field Delim: TAB (9) => Choose File => select u.data from local FS => give Table Name: ratings => Name the columns 
+    * col1: userID
+    * col2: movieID
+    * col3: rating
+    * col4: epochseconds
+* upload table
+* we do the same for u.item with the following diferences
+    * pipe delimited |
+    * table name: names
+    * col1: movieID
+    * col2: title
+* our tables are now in default DB.
+* we will create a view that finds the most popular movie IDs and then joins it with names table to get the title
+* in Query Editor
+```
+CREATE VIEW IF NOT EXISTS topMovieIDs AS
+SELECT movieID, COUNT(movieID) as ratingCount
+FROM ratings
+GROUP BY movieID
+ORDER BY ratingCount DESC;
+
+SELECT n.ttile, ratingCount
+FROM topMovieIDs t JOIN names n ON t.movieID = n.movieID;
+```
+* we see how to create and use views in queries.. we hit Execute
+* if we refresh DS we see that in default we have the new view as a table 
+* we clean up `DROP VIEW topMovieIDs`
+
 ### Lecture 36. How Hive works
 
 * In real Relational DBs we have Schema on Write. we define it before we load data to it
@@ -1171,6 +1208,24 @@ PARTITIONED BY (country:STRING);
     * Through a Thrift service (But HIVe is not suitable for OLTP)
     * with Oozie (manage tool)
 
+### Lecture 37. [Exercise] Use Hive to find the movie with the highest average rating
+
+* Find the movie with the highest average rating
+    * hint: AVG() can be used on aggregated data, like COUNT() does 
+    * only consider movies with >10 ratings
+* in Query Editor
+```
+CREATE VIEW IF NOT EXISTS topRatedMovieIDs AS
+SELECT movieID, COUNT(movieID) as ratingCount, AVG(rating) as ratingAvg
+FROM ratings
+GROUP BY movieID
+ORDER BY ratingAvg DESC;
+
+SELECT n.ttile, ratingAvg
+FROM topRatedMovieIDs t JOIN names n ON t.movieID = n.movieID
+WHERE ratingCount > 10;
+```
+
 ### Lecture 39. Integrating MySQL with Hadoop
 
 * Sqoop allows import/export of data between HDFS and real SQL DBs (like MySQL)
@@ -1191,3 +1246,35 @@ sqoop export --connect jdbc:mysql://localhost/movieles  -m 1 \
 /apps/hive/warehouse/movies --input-fields-terminated-by '\0001' \
 ```
 * target table must already exist in MySQL, with columns in expected order
+
+### Lecture 40. [Activity] Install MySQL and import our movie data
+
+* we use a terminal to connect to the Hortonworks sandbox as maria_dev on pot 2222.
+* mysql is preinstalle on Hortonworks Sandbox
+* we login `mysql -u root -p` password is 'hadoop'
+* we create amovielens DB `create database movielens;`
+* we show daabases to see its there `show databases`
+* we `exit`
+* we get a script that we can use to load the DB with data and create the schema `wget http://media.sundog-soft.com/hadoop/movielens.sql`
+* login to mysql 
+* tell mySQL about encoding `SET NAMES 'utf8';` and `SET CHARACTER SET utf8;`
+* tell which d to use `use movielens;`
+* import the data using the script `source movielens.sql;`
+* look in the DB `show tables;`
+* select to see some data `select * from movies limit 10;`
+* see ratings schema `describe ratings`
+* we can now issue SQL commands to the db
+```
+SELECT movies.title, COUNT(ratings.movie_id) AS ratingCount
+FROM movies
+INNER JOIN ratings
+ON movies.id = ratings.movie_id
+GROUP BY movies.title
+ORDER BY ratingCount;
+```
+* `exit`
+* for data tha fit on one machine its better to o with traditional DBs. its faster. for Big Data Hive and Hadoop is the way
+
+### Lecture 41. [Activity] Use Sqoop to import data from MySQL to HFDS/Hive
+
+* 
