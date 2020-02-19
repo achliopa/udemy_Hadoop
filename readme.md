@@ -1277,4 +1277,49 @@ ORDER BY ratingCount;
 
 ### Lecture 41. [Activity] Use Sqoop to import data from MySQL to HFDS/Hive
 
+* we now have our MySQL DB ready in our cluster
+* we will use sqoop to import data from DB to the cluster
+* we first to set permissions in our DB
+* we log in mysql cli and issue `GRANT ALL PRIVILEDGES ON movielens.* to ''@'localhost';`
+* so any localhost user can do anything to the DB
+* we are still in sandbox ssh session as maria_dev
+* we run sqoop import command `sqoop import --connect jdbc:mysql://localhost/movielens --driver com.mysql.jdbc.Driver --table movies -m 1`
+* map reduce jobs are riggered to handle our request
+* we log in ambari and go to HDFS view and see the /movies directory created
+* in thre we have a log and the actual data file. its 1 as we set one mapper
+* the file is tabular csv format
+* delete the dir with ambari ui
+* we will now import straight to hive from terminal. we use the same command as before adding one param `--hive-import`
+* we go with ambari to Hive View look at default DB to see iv movies table was added. we issue a quer on it `SELECT * FROM movies LIMIT 10;`
+
+### Lecture 42. [Activity] Use Sqoop to export data from Hadoop to MySQL
+
+* we will now do the reverse exporting
+* first we will export from Hive to MySQL
+* in Files View in ambari we look for our Hive data in HDFS. they are in /apps/hive/warehouse/movies . its a single file as we use one mapper. inother distros instead of /apps it can be in /users/
+* data are flat in the file. tabular but not comma delimited
+* to export with sqoop we must make sure table exists in mySQL
+* we will create it. we login mysql cli
+```
+use movielens;
+CREATE TABLE exported_movies (id INTEGER,title VARCHAR(255), releaseDate DATE);
+exit;
+```
+* the sqoop command to do the export is
+```
+sqoop export --connect jdbc:mysql://localhost/movielens -m 1 \
+--driver com.mysql.jdbc.Driver --table exported_movies --export-dir \
+/apps/hive/warehouse/movies --input-fields-terminated-by '\0001' \
+```
+* we log again to mysql to check if data is there
+```
+use movielens;
+select * from exported_movies limit 10;
+exit;
+```
+
+## Section 6: Using non-relational data stores with Hadoop
+
+### Lecture 43. Why NoSQL?
+
 * 
