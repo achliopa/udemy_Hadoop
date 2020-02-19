@@ -1322,4 +1322,123 @@ exit;
 
 ### Lecture 43. Why NoSQL?
 
+* Relational DBs are great for analytical work, complex queries and stuff
+* For limited amaount of queries on massive data and performance requirements, relDBs are a bottleneck
+* NoSQL come to our rescue: the solution to Random Access to Planet Size Data
+* Hbase is NoSQL on Hadoop (HDFS) it can serve web apis
+* Scaling up an Relational DB to massive loads requires extreme measures (before NoSQL)
+    * Denormalization (restructure data to avoid JOINS etc)
+    * Caching layers (in memory like MemCacheD)
+    * master/slave setups (one handles writes an other reads etc)
+    * sharding
+    * materialized views
+    * removing stored procedures
+* Do we REALLY need SQL?
+    * Our high-transaction queries are probably pretty simple once de-normalized
+    * a simple get/put API may serve our needs
+    * Looking up values for a given key is  simple fast and scalable
+    * we can do both
+* in a simplified architecture we assume our client (web service) knows how to route its request to backend to the node keeping the shard containing the index in question
+* Use the right tool for the job
+    * For analytic queries Hive,Pig,Spark work great
+    * Exporting data from Hadoop to MySql is very fast in most cases
+    * But if we work at giant scale, export our data to a non-relational DB for fast and scalable data serving to web apps
+* A sample BigData App architevture
+    * many data sources
+    * Hadoop cluster running spark streaming streams (transformend) data from sources to MongoDB cluster
+    * MongoDB cluster serves web servers cluster
+    * Client uses web server through load baancer.... and he is very happy as it is Blazing Fast
+
+## Lecture 44. What is HBase
+
+* Apache HBASE: NoSQL scalable DB built on HDFS
+* Based on Google's BigTable paper
+* Hadoop is based on Google Tech ppublished 10 years ago
+* Supports CRUD ops (like a RESTapi)
+* Hbase is based on regions of keys (like sharding in elasticsearch) 
+* it applyes range partitioning or auto sharding
+    * as data grows it repartions
+    * as servie grows can add servers
+    * HBase compiles data into large files served by HDFS
+* webapps using HBase do not talk to master nodes but to key region servers directly
+* master nodes keep track of the data schema, how things are partitioned and stored
+* zookeeper keeps track of nodes
+* HBase datamodel
+    * fast access to ROW
+    * A ROW is identified by a unique Key
+    * each ROW has some small number of COLUMN FAMILIES
+    * a column family might contain arbitrary COLUMNS
+    * we can have many many COLUMNS in a COLUMN FAMILY
+    * each CELL can have many VERSIONS with given timestamps
+    * Sparce data is OK. missing columns in a ROW consume no storage
+* we should have few COLUMN FAMILIES
+* Google problem that resulted in HBASE:
+    * track all the links that lead back to a page
+    * key is a website uri 'com.cnn.www` stored in reverse order in order to group subdomains
+    * Content columns family with one column COntents using versioning to keep multiple copies of the contents of the page (the last 3 crawls from scraper)
+    * anchor column family storing all the links on the web tha link back to the key web page, the column name is the url of the link backlinkg to our page. the value is the text of the link.. columns in column families are notated as family:column
+    * this is indeed a sparse data matrix
+* Ways to interact with HBase
+    * HBase shell
+    * Java API (wrappers for Python, Scala ...)
+    * Spark,Hive,Pig
+    * RESTful service API
+    * Thrift service
+    * Avro service (service version is important)
+
+### Lecture 45. [Activity] Import movie ratings into HBase
+
+* Create an HBase table for movie reatings by user
+* Then show we can quickly query it for individual users
+* good example of sparse data
+    * key: userID
+    * columnfamily: rating
+        * Rating:20 = 1
+        * .......
+        * Rating:223 = 5
+* How we will do it: PythonClient => REST Service => HBase => HDFS
+* Python will run on host
+* We need to get HBASE running
+    * start the sandbox
+    * open port 8000 in VM or AWS EC2 for the REST service the client will talk to
+    * login to ambari as admin
+    * go to HBASE service and start it
+* we need to launch a REST server on top of HBASE for client to communicate
+    * log in to sandbox with ssh (maria_dev at port 2222)
+    * `su root`
+    * `/usr/hdp/current/hbase-master/bin/hbase-daemon.sh start rest -p 8000 --infoport 8001`
+* on our host we download the python script to run `wget https://github.com/chc506/Udemy-Hadoop/blob/master/6.2.HBaseExamples.py`
+* if not installed we need to `pip install starbase` package 
+```
+from starbase import Connection
+c = Connection("<HDP IP or DNS name>","8000")
+ratings = c.table('ratings')
+if (ratings.exists()):
+    print("Dropping existing ratings table\n")
+    ratings.drop()
+ratings.create('rating)
+print("Parsing the ml-100k ratings data...\n")
+ratingFile = open("/home/achliopa/workspace/udemy/hadoop/courseMaterial/ml-100k/u.data", "r")
+
+batch = ratings.batch()
+
+for line in ratingFile:
+    (userID,movieID,raing,timestamp) = line.split()
+    # create the column
+    batch.update(userID, {'rating': {movieID: rating}})
+
+ratingFile.close()
+print("Commiting ratings data to HBase via REST service\n")
+batch.commit(finalize=True)
+# Simulate client
+print("Get back ratings for some users...\n")
+print("Ratings for user ID 1:\n")
+print(ratings.fetch("1"))
+print("Ratings for user ID 333:\n")
+print(ratings.fetch("33"))
+```
+* we run the script write and fetch the records
+
+### Lecture 46. [Activity] Use HBase with Pig to import data at scale.
+
 * 
