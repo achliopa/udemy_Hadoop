@@ -1441,4 +1441,114 @@ print(ratings.fetch("33"))
 
 ### Lecture 46. [Activity] Use HBase with Pig to import data at scale.
 
+* we will see how to populate HBase with big data
+* using python script to load local file is ok. 
+* in BigData we might want to move large data from cluster to cluster
+* we will use Pig to load HBase from HDFS
+* to do it we must create HBase table ahead of time
+* our relation must have a unique key as its first column, followed by susequent columns as we want them in HBase
+* USING clause allows us to STORE into an HBase table
+* this approach scales up. HBase is transactional in Rows
+* an HBase script called importTSV can be used
+* we will import the users table from movielens dataset
+    * open ambari as maria_dev
+    * go to files view
+    * go to /users/maria_dev/ml-100k => upload u.users from host => open it (its | delim)
+* create hbase table
+    * log in to sandbox with SSH on port 2222 as maria_dev and change to root (do we need to be root?)
+    * run `hbase shell`
+    * run `list` to list all existing tables
+    * create a new table `create 'users','userinfo'` passing in name and column family
+    * `list` to verify creation and `exit`
+* download the pig script `wget http://media.sundog-soft.com/hadoop/hbase.pig`
+* check the script `less hbase.pig`
+```
+users = LOAD '/user/maria_dev/ml-100k/u.user' 
+USING PigStorage('|') 
+AS (userID:int, age:int, gender:chararray, occupation:chararray, zip:int);
+
+STORE users INTO 'hbase://users' 
+USING org.apache.pig.backend.hadoop.hbase.HBaseStorage (
+'userinfo:age,userinfo:gender,userinfo:occupation,userinfo:zip');
+```
+* script is straghtforward as it sets the mapping to columnfamily
+* run script `pig hbase.pig` kicks in a map reduce work
+* go back to `hbase shell` and use `scan 'users'` to peek in the table
+* we see id and cell values is a timestamped format
+```
+99  column=userinfo:age,timestamp=21243212432,value=20
+99  column=userinfo:gender,timestamp=21243212432,value=M
+```
+* before we can drop a table in hbase we have to disable it 
+```
+disable 'users'
+drop 'users'
+exit
+```
+* go to ambari and stop HBASE service
+
+### Lecture 47. Cassandra overview
+
+* Cassandra: a distributed database system with no single point of failure
+* Unlike HBase it has no master node. every node runs exacty same SW like the rest (availability)
+* Data model is similar to BigTable/HBase
+* Non-relatiotal (NoSQL) has a limited CQL (Cassandra Query Lang) query lang as its API
+* Cassandra Design Choices
+    * CAP theorem says we can have only 2 out of 3: consistency,availability,partition-tolerance
+    * Partition-tolerance is a must for BigData.
+    * Cassandra favors availability over consistency
+    * Its "eventually consistent"
+    * We can still spec consistency in our query. its "tunable consistency
+* DB fit in CAP tradeoffs
+    * MySQL: Consistency-Availability
+    * HBASE,mongoDB: Consistency-PartitionTolerance
+    * Cassandra: Availability-PartitionTolerance
+* How Cassandra meets its goal?
+    * Ring Architecture of Nodes that are exactly the same
+    * Gossip P2P Protocol
+    * Key hashing
+* The range of keys in CassandraDB is hashed to the diff ranges of values on nodes
+* In request we can spec if we want to get same val from multiple nodes to consider it valid
+* Cassandra is great for fast access to row of info. 
+* To get the best of both worlds usually Cassandra is replicated to another ring used for analytics and Spark integration
+* Cassandra API is CQL. it makes it easy to look like existing Database drivers to application
+* CQL is like SQL but with limitations
+    * No JOINS
+    * data must be de-normalized (still non-relational)
+    * All queries must  be on some primary key (secondary indices supported partially)
+* CQLSH can be used on the command line to create tables etc.
+* All tables must be in a keyspace. keyspaces are like databases
+* Cassandra can work with Spark!!!!
+* DataStax offers Spark-Cassandra connector
+* Allows us to read and write Cassandra tables as DataFrames
+* Is smart about passing queries on those DataFrames down to the appropriate level
+* Use Cases:
+    * Use Spark for analytics on data stored in Cassandra
+    * Use Spark to transform data and store it into Cassandra for transactional use
+* What WE WILL DO??
+    * Install Cassandra on Sandbox Hadoop cluster
+    * Setup a table for MovieLens users
+    * Write into that table and query it from Spark!
+
+### Lecture 48. If you have trouble installing Cassandra...
+
+* if during installation RPM DB is corrup we will see a messagage like
+```
+rpmts_HdrFromFdno – error: rpmdbNextIterator – HeaderV3 RSA/SHA1 Signature, key ID BAD
+```
+* if this happens we can no longer use yum
+* a fix is to login the sandbox with ssh on 2222 and change to root. then
+```
+cd ~
+ 
+wget http://mirror.centos.org/centos/6/os/x86_64/Packages/nss-softokn-freebl-3.14.3-23.3.el6_8.x86_64.rpm
+ 
+rpm2cpio http://mirror.centos.org/centos/6/os/x86_64/Packages/nss-softokn-freebl-3.14.3-23.3.el6_8.x86_64.rpm | cpio -idmv
+ 
+cp ./lib64/libfreeblpriv3.* /lib64
+```
+* we might lose connection to ssh, if so wait say 10mins then restart VM
+
+### Lecture 49. [Activity] Installing Cassandra
+
 * 
