@@ -1551,4 +1551,102 @@ cp ./lib64/libfreeblpriv3.* /lib64
 
 ### Lecture 49. [Activity] Installing Cassandra
 
-* 
+* Cassandra is not meant for HDFS it runs on linux ext4 file system
+* login as maria_dev in the sandbox via ssh port 2222 and switch to root
+* cassandra requires python 2.7. we check the version to see
+
+### Lecture 50. [Activity] Write Spark output into Cassandra
+
+* we exit cql shell and we are as root in sandbox sssh  session
+* we download the script to integrate spart output to cassandra `wget http://media.sundog-soft.com/hadoop/CassandraSpark.py`
+* we need to tell hadoop we use spark2 as we work on DataSets `export SPARK_MAJOR_VERSION=2`
+* we will use Session,Row and functions from spark sql
+```
+from pyspark.sql import SparkSession
+from pyspark.sql import Row
+from pyspark.sql import functions
+
+def parseInput(line):
+    fields = line.split('|')
+    return Row(user_id = int(fields[0]), age = int(fields[1]), gender = fields[2], occupation = fields[3], zip = fields[4])
+
+if __name__ == "__main__":
+    # Create a SparkSession
+    spark = SparkSession.builder.appName("CassandraIntegration").config("spark.cassandra.connection.host", "127.0.0.1").getOrCreate()
+
+    # Get the raw data
+    lines = spark.sparkContext.textFile("hdfs:///user/maria_dev/ml-100k/u.user")
+    # Convert it to a RDD of Row objects with (userID, age, gender, occupation, zip)
+    users = lines.map(parseInput)
+    # Convert that to a DataFrame
+    usersDataset = spark.createDataFrame(users)
+
+    # Write it into Cassandra
+    usersDataset.write\
+        .format("org.apache.spark.sql.cassandra")\
+        .mode('append')\
+        .options(table="users", keyspace="movielens")\
+        .save()
+
+    # Read it back from Cassandra into a new Dataframe
+    readUsers = spark.read\
+    .format("org.apache.spark.sql.cassandra")\
+    .options(table="users", keyspace="movielens")\
+    .load()
+
+    readUsers.createOrReplaceTempView("users")
+
+    sqlDF = spark.sql("SELECT * FROM users WHERE age < 20")
+    sqlDF.show()
+
+    # Stop the session
+    spark.stop()
+```
+* in the script we parse a pipe delimited tabular file from hdfs to  spark as dataset of rows (RDD) and then dataset object
+* then write it in Cassandra and read it back (load it to dataframe), field names match column names
+* in spark session we config cassandra connection
+* we make sure u.user in in hdfs in the given position (use ambari)
+* then we run sql queries on it in spark
+* to run the scipt in hadoop we run `spark-submit --packages datastax:spark-cassandra-connector:2.0.0-M2-S_2.11 CassandraSpark.py` passing the package that binds spark with cassandra
+* we see the script results..
+* we want to see if data are on cassandra as well
+* we start the cql shell `cqlsh --cqlversion="3.4.0"`
+* we connec to movilens `USE movielens;`
+* do a query `SELECT * FROM users LIMIT 10;`
+* `exit` cql shell
+* we stop the service in root shell 'yum.repos.d' with `service cassandra stop`
+
+### Lecture 51. MongoDB overview
+
+* MongoDB (Managing HuMONGOus data)
+* has a single master for consistency and many worker nodes
+* Document-based data model that looks like JSON
+* we can hve nested documents
+* we can have different fields in every document if we want to
+* no single key as in other databases
+    * we can create indices out of any fields we want, or even field combinations
+    * if we want to "shard" we must do it on some index
+* Results in great flexibility
+* no fixed schema is enforced on documents
+* when we define the schema in mongo we have to think on the possible queries
+* MongoDB datamodel: DB => Collections => Documents
+* we cannot move data between collections in different DBs
+* Replication Sets
+    * Single master for consistency
+    * Maintains backup copies of our DB instance
+    * secondaries can elect a new primary in seconds if primary goes down
+    make sure our operation log is long enough to give us time to recover the primary when it comes back. otherwise thigs get nasty
+    * replication happens between primary and secondaries
+* Still no  bigdata concept. a monolithic DB with replication
+* Replica set quirks
+    * majority of servers must agree on the primary (choose odd server nums)
+    * if we dont want to spend money on 3 servers we can setup an abitrer node (only 1)
+    * apps must know about enough servers in the replica set to be able to reach one to find whos the primary
+    * replicas add durabilty not ability to scale. we should avoid reading from secondaries
+    db will go in readonly mode while a new primary is selected
+    * delayed secondaies can be set as insurance against people doing dumb things (rollback)
+* Sharding for bigdata
+* ranges of some indexed values we spec are asigned to diff replica sets
+* mongos talks to confi server (3) that tell him where to go to get the data
+* Sharding Quirks
+    * autosharding sometimes does not work
