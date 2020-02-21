@@ -1646,7 +1646,114 @@ if __name__ == "__main__":
     db will go in readonly mode while a new primary is selected
     * delayed secondaies can be set as insurance against people doing dumb things (rollback)
 * Sharding for bigdata
-* ranges of some indexed values we spec are asigned to diff replica sets
-* mongos talks to confi server (3) that tell him where to go to get the data
+    * ranges of some indexed values we spec are asigned to diff replica sets
+    * mongos talks to config server (three nodes) that tell him where to go to get the data
 * Sharding Quirks
-    * autosharding sometimes does not work
+    * autosharding sometimes does not work. the result is split storms when mongo processes restart too often
+    * we must have 3 config servers. if one goes down DB goes down
+    * also there there is single master design in replica sets
+    * loose document model can make effective sharding problematic. we must implement a firm model
+* Good things about Mongo DB:
+    * not just a NoSQL DB. a very flexible document model
+    * shell is a full JS interpreter
+    * supports many indices
+        * only one is used for sharding
+        * more than 2,3 is not recommended
+        * even full text indices for text searches
+        * spatial indices
+    * built in aggregation capabilities. MapReduce, GridFS (like HDFS)
+        * for some apps we might not even need Hadoop
+        * MongoDB integrates well with Hadoop,Spark and many Langs
+    * An SQL connector is available
+        * MongoDB is not designed for joins and normalized data
+
+### Lecture 52. [Activity] Install MongoDB, and integrate Spark with MongoDB
+
+* login to SSH shell at port 2222 to sandbox as maria_dev
+* we need to install MongoDB on sandbox. there is even a connector to Ambari
+* we switch to root `su root`
+* go to ambari server `cd /var/lib/ambari-server/resources/stacks/HDP` and do `ls` 
+* cd into the latest version available (is the one installed) in our case 2.6.5 `cd 2.6.5` and then into service `cd services`
+* we clone the ambari connector for mongo from github `git clone https://github.com/nikunjness/mongo-ambari.git`
+* restart ambari to see mongo connector `sudo service ambari restart`
+* open browser and go to ambari UI at 8080. login as admin
+* Actions => Add Service => click on mongodb => accept all defaults => next => no need to customize => next => ingore warnings => proceed anyway => deploy
+* mongo might crash if not stopped correctly. then we need to reinstal VM??? WTF 
+* we will copy movielens set from HDFS in mongo and read it back
+* go to File veiw => /users/maria_dev/ml-100k/ and make sure u.user is in place
+* we need a python spark script to integrate mongodb with spark.
+* in SSH session as root in sandbox we `pip install pymongo` for the python mongo binds
+* we look at the ready made script
+```
+from pyspark.sql import SparkSession
+from pyspark.sql import Row
+from pyspark.sql import functions
+
+def parseInput(line):
+    fields = line.split('|')
+    return Row(user_id = int(fields[0]), age = int(fields[1]), gender = fields[2], occupation = fields[3], zip = fields[4])
+
+if __name__ == "__main__":
+    # Create a SparkSession
+    spark = SparkSession.builder.appName("MongoDBIntegration").getOrCreate()
+
+    # Get the raw data
+    lines = spark.sparkContext.textFile("hdfs:///user/maria_dev/ml-100k/u.user")
+    # Convert it to a RDD of Row objects with (userID, age, gender, occupation, zip)
+    users = lines.map(parseInput)
+    # Convert that to a DataFrame
+    usersDataset = spark.createDataFrame(users)
+
+    # Write it into MongoDB
+    usersDataset.write\
+        .format("com.mongodb.spark.sql.DefaultSource")\
+        .option("uri","mongodb://127.0.0.1/movielens.users")\
+        .mode('append')\
+        .save()
+
+    # Read it back from MongoDB into a new Dataframe
+    readUsers = spark.read\
+    .format("com.mongodb.spark.sql.DefaultSource")\
+    .option("uri","mongodb://127.0.0.1/movielens.users")\
+    .load()
+
+    readUsers.createOrReplaceTempView("users")
+
+    sqlDF = spark.sql("SELECT * FROM users WHERE age < 20")
+    sqlDF.show()
+
+    # Stop the session
+    spark.stop()
+```
+* like we did in cassandra we first load the file from hdfs to spark trasform it to DataFrame and then load the DataFrame to MongoDb
+* all that in a SparkSession
+* we write to movielens db in users collection Dataframes as documents
+* then we read back mongodb and load data back to spark and confitm the load with a query to spark
+* what happens under the hood is that query is delegated to mongodb and spark goes there to get the data
+* exit from root `exit`
+* go to home dir `~`
+* get the script `wget http://media.sundog-soft.com/hadoop/MongoSpark.py`
+* make sure we run spark 2 `export SPARK_MAJOR_VERSION=2`
+* run script `spark-submit --packages org.mongodb.spark:mongo-spark-connector_2.11:2.0.0 MongoSpark.py` 2.11 is Scala Version and 2.0.0 is Spark version. if we use others put the correct nums
+* We have the results!!!!
+
+### Lecture 53. [Activity] Using the MongoDB shell
+
+* to launch mongo shell run `mongo`
+* to use movielens db `use movielens`
+* we can run queries js style on db collection `db.users.find({user_id: 100})`
+* to see what happens internally when executing the query chain `.explain()`  before find()
+* we can create index on an id `db.users.createindex({user_id: 1})` the index will speed up queries on the id
+* if we run again the query using explain. we see that instead of SCAN it does LXSCAN
+* mongodb does not setup an index on the primary key like cassandra does. we have to do it manualy
+* we ll test mongodb aggregation functions, we will aggregate on profession to find average age by profession `db.users.aggregate([ ... { $group: {_id: {occupation: "$occupation"}, avgage: { $avg: "$age"}}} ... ])`
+* to get a count of users in collection `db.users.count()`
+* to see collections in db `db.getCollectionInfoa()`
+* to drop collection `db.users.drop()`
+* exit shell `exit`
+* IMPORTANT: stop mongo service from ambari before sutting down sandbox!!! services => mongodb => stop service
+
+### Lecture 54. Choosing a database technology
+
+* How to make a wise DB choice when Architecting a new system
+* What systems we need to integrate together?
