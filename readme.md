@@ -1870,8 +1870,110 @@ SELECT u.occupation, COUNT(*) FROM hive.movielens.ratings r JOIN mongo.movielens
 
 * Apache Phoenix (SQL for HBase): it works with HBase and nothing more...
     * An SQL  driver fro HBase that supports transactions
-    * Fast, low-latency - OLTP support
+    * Fast, low-latency - OLTP support (assuming simple queries)
     * Originally developed by Salesforcem then open-sourced
     * Exposes a JDBC connector for HBase
     * Supports secondary indices and user-defined functions
     * Integrates with MapReduce,Spark,Hive,Pig and Flume
+* Why use Phoenix?
+    * its really fast. no performance loss for adding this extra layer on HBase
+    * why phoenix and not drill? choose right tool for the job (hbase optimized)
+    * why phoenix and not hbase native? might have alredy expertise in SQL or SQL consuming apps. Phoenix optimizes queries but underneath its still NoSQL
+* Phoenix Architecture:
+    * PhoenixClient (parsing,query plan)+HBase API 
+    * API talks to HBase Region Servers/PhoenixCoProcessor
+    * Servers talk to HDFS
+    * API and PhoenixCoProcessors are orchestrated by Zookeper
+* Using Phoenix
+    * CLI
+    * Phoenix API for Java
+    * JDBC Driver (thick client) (logic on client side)
+    * Phoenix Query Server (PQS) (thin client) to enable non-jvm access (takes out load from clients)
+    * JARs for MapReduce,Hive,Pig,Flume,Spark
+* What we will do:
+    * install Phoenix on Hortonworks Sandbox
+    * play with CLI
+    * setup user tables for Movielens
+    * store and load data with Pig integration to Phoenix
+
+### Lecture 60. [Activity] Install Phoenix and query HBase with it
+
+* go to ambari and log in as admin
+* go to HBase service and start it
+* login to sandbox via ssh as maria_dev on port 2222
+* switch to root `su root`
+* install phoenix `yum install phoenix`
+* go to `cd /usr/hdp/current/phoenix-client/` and go to bin subfolder
+* run `python sqline.py`
+* now we have a prompt
+* `!tables` to see tables phoneix knows about.all are system tables
+* create a new table of cities and their populations `CREATE TABLE IF NOT EXISTS us_population(state CHAR(2) NOT NULL, city VARCHAR NOT NULL, population BIGINT, CONSTRAINT my_pk PRIMARY KEY (state,city) );` 
+* we vonfirm creation with `!table`
+* phoenix does not understand INSTERT use UPSERT `UPSERT INTO US_POPULATION VALUES ('NY','New York', 8147334);` and `UPSERT INTO US_POPULATION VALUES ('CA','Los Angeles', 3789654);`
+* throw a query `SELECT * FROM US_POPULATION;` or `SELECT * FROM US_POPULATION WHERE STATE='CA';` 
+* `!quit`
+
+### Lecture 61. [Activity] Integrate Phoenix with Pig
+
+* we nwwd to create the table before we run pig scripts on it
+* in '/usr/hdp/current/phoenix-client/bin' we run `python sqline.py` to fire up the cli prompt
+* create the table `CREATE TABLE users( USERID INTEGER NOT NULL, AGE INTEGER, GENDER CHAR(1), OCCUPATION VARCHAR, ZIP  VARCHAR CONSTRAINT pk PRIMARY KEY(USERID));`
+* check table creation `!tables` and `!quit`
+* as root we dc into `cd /home/maria_dev/` and make sure we have ml-100k dataset with u.users in. if not we can wget it  scp it or use ambari file view
+* in home dir get the pig script `wget http://media.sundog-soft.com/hadoop/phoenix.pig` and peek inside it
+```
+REGISTER /usr/hdp/current/phoenix-client/phoenix-client.jar
+
+users = LOAD '/user/maria_dev/ml-100k/u.user' 
+USING PigStorage('|') 
+AS (USERID:int, AGE:int, GENDER:chararray, OCCUPATION:chararray, ZIP:chararray);
+
+STORE users into 'hbase://users' using
+    org.apache.phoenix.pig.PhoenixHBaseStorage('localhost','-batchSize 5000');
+
+occupations = load 'hbase://table/users/USERID,OCCUPATION' using org.apache.phoenix.pig.PhoenixHBaseLoader('localhost');
+
+grpd = GROUP occupations BY OCCUPATION; 
+cnt = FOREACH grpd GENERATE group AS OCCUPATION,COUNT(occupations);
+DUMP cnt;  
+```
+* first we tell pig where to get phoenix libs
+* then we load the data from hdfs text file. make sure type matching
+* then we store it to HBase in the table we already created using the phoenix connector
+    * pass in hostname
+    * make sure memory is enoough for data
+* we formulate the queries we group by and then create a new relation of counts and dump it to screen
+* we run the script `pig phoenix.pig`
+* we `cd /usr/hdp/current/phoenix-client/bin` and start cli `python sqline.py` we run some query on our new table `SELECT * FROM USERS LIMIT 10;` and delete table `DROP TABLE users;` and `!quit`
+* go to ambari and stop HBase service
+* the most widely use interace to phoenix is JDBC
+
+### Lecture 62. Overview of Presto
+
+* Presto: Distributing queries across different data stores
+    * its a lot like Drill. it can connect to many different Big Data databases and data stores at once, and issue queries across them using Familiar SQL syntax. its optimized for OLAP (analytical queries, data warehousing)
+    * Developed and maintained by Facebook
+    * Exposed JDBC, CLI and Tableau Interfaces
+* Why Presto???
+    * vs Drill. Presto has a Cassandra connector
+    * if its good enough for Facebook... FB uses Presto for interactive queries against several internal data stores including a 300PB data warehouse... Over 1000 FB empolyees use Pesto daily to run more than 30K queries that scan over a PB of data each day.....
+    * used in Dropbox and AirBnB
+    * A single Presto query can combine data rom multiple sources allowing for analytics across an entire organization
+    Presto breaks the choice between fast analytics using an expensive commercial solution or using a slow free solution crunching HW resources
+* What Presto can do?
+    * Cassandra (also by maintained by FB)
+    * Hive
+    * MongoDB
+    * MySQL
+    * Local files
+    * Kafka, Redis, JMX, PostgreSQL,Accumulo
+* Our plan of actions to learn presto
+    * setup Presto
+    * Query our Hive ratings table using Presto
+    * Spin Cassandra back up, query our users table in Cassandra with Presto
+    * Execute a query that joins users in Cassandra with ratings in Hive
+
+### Lecture 63. [Activity] Install Presto, and query Hive with it.
+
+* start vm and connect to it with ssh on port 2222 as maria_dev. switch to root `su root`
+* 
