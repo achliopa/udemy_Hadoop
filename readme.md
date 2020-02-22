@@ -378,9 +378,11 @@ Removing temp directory /tmp/Rat
 Running step 1 of 1...
   packageJobJar: [] [/usr/hdp/2.6.5.0-292/hadoop-mapreduce/hadoop-streaming-2.7.3.2.6.5.0-292.jar] /tmp/streamjob5828654335426169716.jar tmpDir=null
   Connecting to ResourceManager at sandbox-hdp.hortonworks.com/172.18.0.2:8032
-  Connecting to Application History server at sandbox-hdp.hortonworks.com/172.18.0.2:10200
+  Connecting to Application History server
+ at sandbox-hdp.hortonworks.com/172.18.0.2:10200
   Connecting to ResourceManager at sandbox-hdp.hortonworks.com/172.18.0.2:8032
-  Connecting to Application History server at sandbox-hdp.hortonworks.com/172.18.0.2:10200
+  Connecting to Application History server
+ at sandbox-hdp.hortonworks.com/172.18.0.2:10200
   Total input paths to process : 1
   number of splits:2
   Submitting tokens for job: job_1581271908853_0001
@@ -1100,7 +1102,8 @@ popularAveragesAndCounts = averagesAndCounts.filter("count > 10")
     * Scalable as it scales with Hadoop cluster (Good fit for data warehouse apps)
     * Easy OLAP (online analytics) queries - much easier than writinf mapReduce in java
     * Optimized for performance
-    * Higly extensible (UDFs, Thrift server, JDBC/ODBC driver)
+    * Higly extensible (UDFs, Thrift server
+, JDBC/ODBC driver)
 * WHy not to use Hive
     * High latency - not approptiate for OLTP (online transaction processing). latency is introduces by MapReduce
     * Stores data de-normalized (flat files)
@@ -1205,6 +1208,7 @@ PARTITIONED BY (country:STRING);
     * save queries in .hql files and eun hive on them `hive -f /path/query.hql`
     * with Ambari,Hue
     * with JDBC,ODBC server
+
     * Through a Thrift service (But HIVe is not suitable for OLTP)
     * with Oozie (manage tool)
 
@@ -1347,7 +1351,8 @@ exit;
     * many data sources
     * Hadoop cluster running spark streaming streams (transformend) data from sources to MongoDB cluster
     * MongoDB cluster serves web servers cluster
-    * Client uses web server through load baancer.... and he is very happy as it is Blazing Fast
+    * Client uses web server
+ through load baancer.... and he is very happy as it is Blazing Fast
 
 ## Lecture 44. What is HBase
 
@@ -1639,7 +1644,8 @@ if __name__ == "__main__":
     * replication happens between primary and secondaries
 * Still no  bigdata concept. a monolithic DB with replication
 * Replica set quirks
-    * majority of servers must agree on the primary (choose odd server nums)
+    * majority of servers must agree on the primary (choose odd server
+ nums)
     * if we dont want to spend money on 3 servers we can setup an abitrer node (only 1)
     * apps must know about enough servers in the replica set to be able to reach one to find whos the primary
     * replicas add durabilty not ability to scale. we should avoid reading from secondaries
@@ -1647,7 +1653,8 @@ if __name__ == "__main__":
     * delayed secondaies can be set as insurance against people doing dumb things (rollback)
 * Sharding for bigdata
     * ranges of some indexed values we spec are asigned to diff replica sets
-    * mongos talks to config server (three nodes) that tell him where to go to get the data
+    * mongos talks to config server
+ (three nodes) that tell him where to go to get the data
 * Sharding Quirks
     * autosharding sometimes does not work. the result is split storms when mongo processes restart too often
     * we must have 3 config servers. if one goes down DB goes down
@@ -1756,4 +1763,115 @@ if __name__ == "__main__":
 ### Lecture 54. Choosing a database technology
 
 * How to make a wise DB choice when Architecting a new system
-* What systems we need to integrate together?
+* What systems we need to integrate together? 
+    * check for available connectors
+    * chaeck for implemented api binds in  existing apps code
+* Scaling requirements
+    * think for the future how data will grow
+    * transaction rates
+* Support Considerations:
+    * In house expertise
+    * secure consideration
+* costs
+    * servers
+    * supporr
+* CAP theorem
+* keep it simple
+    * mvp
+* Example (internal phone directory app) => MySQL
+    * scale: limited
+    * consistency: eventual is fine
+    * avalability reqs: not mission critical
+    * mySQL is probably already installed to the web server
+* Example: app that mines web server logs for patterns (analytics) - No DB
+    * analyze offline using spark and hadoop
+    * if we want to serve results then we may need external db
+* Example: movie recommendation system - Cassandra
+    * big spark job producing movie recomendations to users nightly
+    * results need to be served to web apps
+    * massive scale - huge company
+    * no downtime
+    * fast
+    * eventual consistency OK. just reads from web apps
+* Example: Massive stock trade system - MongoDB or even HBase
+    * consistency is paramount
+    * bigdata
+    * really important app. professional support a good idea.
+
+## Section 7: Querying your Data Interactively
+
+### Lecture 56. Overview of Drill
+
+* after completing the external data storage option that integrate with hadoop we will see the available query engines
+* querying engines can sit on top ov various storage technolgies
+* Apache DRILL allows us to issue SQL queries on stuff that are in the hadoop cluster. drill can talk to MongoDB
+* Apache PHOENIX talks to HBASE
+* Presto from Facebook talks to Cassandra whlie Drill cannot
+* Query engine selection is driven by the DB selection most of the times
+* Apache DRILL: SQL for NoSQL: An SQL Query engine for NoSQL DBs and data files 
+    * Hive, MongoDB, HBase
+    * flat JSON or Parquet files on HDFS,S3,GCloud, local fs
+    * Based on Google's Dremel
+* Its real SQL 
+    * no SQL-Like
+    * has ODBC,JDBC drivers so other tools can connect to it just like any other Relational DB
+* It can replace Hive
+* Fast and easy to setup
+    * still non-rel databases under the hood. Keep it in mind
+    * allows SQl analysis of disparate data sources without having to transform and load first
+    * internally data is represented as JSOn with no fix schema
+* We can even do joins on different DB technologies of even flat JSON files
+* We will import data to Hive and MongoDB
+* setup drill on top of both and do SQL queries
+
+### Lecture 57. [Activity] Setting up Dril
+
+* we launch our sandbox vm
+* login to ambari as admin
+* go to mongoDB service tag => start service
+* go to hive view
+* in query editor: create db `CREATE DATABASE movielens;` and execute
+* Upload Table => CSV w/ TABS => Choose Local File => u.data
+    * Database: movielens
+    * Table name: ratings
+    * col1: user_id (INT)
+    * col2: movie_id (INT)
+    * col3: rating (INT)
+    * cl4: epoch_seconds (INT)
+* Upload in hive. got to Query => Databases => ratings and execute a query `SELECT * FROM ratings LIMIT 100;`
+* we ll now load data to mongoDB
+* open ssh to 2222 (sandbox) as maria_dev and `su root`
+* we should have the MongoSpark.py script in roots home folder and the ml-100k folder with u.user in maria_dev home folder. we can check that in Files View of Ambari
+* make sure spark2 is used `export SPARK_MAJOR_VERSION=2` and run script `spark-submit --packages org.mongodb.spark:mongo-spark-connector_2.11:2.0.0 MongoSpark.py` verify output is ok
+* drill is not part of HDP. its easy to install
+* we need a specific version combatible with the version of Hive running on HDP 
+* we get 1.12 (check if its ok for HDP 2.6.5 hive version) `wget http://archive.apche.org/dist/drill/drill-1.12.0/apache-drill-1.12.0.tar.gz`
+* decompress and run: `tar -xvf <tarfile>` cd into it, and run it `bin/drillbit.sh start -Ddrill.exec.port=8765`
+* the -D param opens a port to docker that runs the HDP instance. we need to open the port to our VM as wellto communicate from host
+* open browser and visit http://<HDPIP>:8765 to see the drill UI
+* click on Storage: we see that Hive and Mongo are enabled
+* click Update on Hive and see the hive.metastore.uris that is 'thrift://localhost:9083' . this is how drill connects to hive
+* for Mongo we click Update and see the connection: "mongodb://localhost:27017/" this is how drill connects to MongoDB
+
+### Lecture 58. [Activity] Querying across multiple databases with Drill
+
+* using Drill is easy. standard SQL
+* go to Query tab. submit `SHOW DATABASES;` and we get a list of the DBs. we see hive.movielens schema and mongo.movielens
+* we query hive `SELECT * FROM hive.movielens.ratings LIMIT 10;`
+* we query mongo `SELECT * FROM mongo.movielens.users LIMIT 10;` note that we havent indexed mongo collection. it works but its just slower. we see the _id generated by mongo for the documents
+* we will combine both dbs throwing std SQL to get the number of ratings per occupation. students write the most
+```
+SELECT u.occupation, COUNT(*) FROM hive.movielens.ratings r JOIN mongo.movielens.users u ON r.user_id = u.user_id GROUP BY u.occupation;
+```
+* `pwd` to see curent dir . if we are in unzipped folder then `bin/drillbit.sh stop`
+* shutdown mongodb from ambari
+
+### Lecture 59. Overview of Phoenix
+
+* Apache Phoenix (SQL for HBase): it works with HBase and nothing more...
+    * An SQL  driver fro HBase that supports transactions
+    * Fast, low-latency - OLTP support
+    * Originally developed by Salesforcem then open-sourced
+    * Exposes a JDBC connector for HBase
+    * Supports secondary indices and user-defined functions
+    * Integrates with MapReduce,Spark,Hive,Pig and Flume
