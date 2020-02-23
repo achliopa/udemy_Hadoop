@@ -1976,4 +1976,67 @@ DUMP cnt;
 ### Lecture 63. [Activity] Install Presto, and query Hive with it.
 
 * start vm and connect to it with ssh on port 2222 as maria_dev. switch to root `su root`
+* we download the pckage from [presto](https://prestodb.io) Docs => Deploying Presto => cp the tatball link address
+* in root home dir `wget https://repo1.maven.org/maven2/com/facebook/presto/presto-server/0.231.1/presto-server-0.231.1.tar.gz`
+* in a production install we would install it in more permanent location
+* uncompress it `tar -xvf presto-server-0.231.1.tar.gz` and cd inti it.
+* thre is o config file. in [docs](https://prestodb.io/docs/current/installation/deployment.html) we have instructions how to add them.
+* we have a ready made config file from lecture `wget http://media.sundog-soft.com/hadoop/presto-hdp-config.tgz`
+* untar it `tar -xvf ....` and it adds a /etc folder with redy config files
+* we peek in 'config.properties' and we see it runs on 8090 port (make sure to open it in VM)
+* we peek in 'node.properties' and see the node id that must be unique for every node
+* in /catalog there is a hive.properties file and jmx.properties that are the DB connectors
+* the 'hive.properties' contains a trhift service to connect to hive
+* we need the commandline for presto. in [docs](https://prestodb.io/docs/current/installation/cli.html) we sse the instructions. we cp the [jar link](https://repo1.maven.org/maven2/com/facebook/presto/presto-cli/0.231.1/presto-cli-0.231.1-executable.jar)
+* we go to untared presto folder in /bin and `wget https://repo1.maven.org/maven2/com/facebook/presto/presto-cli/0.231.1/presto-cli-0.231.1-executable.jar`
+* we rename it to presto `mv ,,,,jar presto` and makeit executable `chmod +x presto`
+* we go back to master presto folder (untared) and start presto `bin/launcher start`
+* from browser we go to <HDP DNSNAME>:8090 and see the presto dashboard
+* fire up the cli `bin/presto --server 127.0.0.1:8090 --catago hive`
+* we assume ratings table is in hive. if not reload it using previous lectures steps using ambari hive view
+in presto cli we through commands `show tables from default;` and confirm ratings table is there
+* we write some SQL `select * from default.ratings limit 10;`
+* in dashboard we see activity
+* we write more queries `select * from default.ratings where rating=5 limit 10;`
+* we count 5 star ratings `select count(*) from default.ratings where rating=1;`
+* stop presto `bin/launcher stop`
+
+### Lecture 64. [Activity] Query both Cassandra and Hive using Presto
+
+* we have cassandra installed from the previous lecture 
+* we run `scl enable python27 bash` and confirm python2.7 with `python -V`
+* `service cassandra start` to start it
+* we need to enable thriftservice on cassandra as presto needs it to communicate with cassandra `nodetool enablethrift`
+* fireup cql shell `cqlsh --cqlversion="3.4.0"` and run `describe keyspaces;` to see available schemas in cassandra
+* connect to db `use movielens;` and see tables `describe tables;` users is in
+* issue a query `select * from users limit 10; `
+* we ll now issue combined queries from presto on cassandra and hive
+* we are in presto folder as root. we go to `cd etc/catalog` and configure the properties from cassandra in presto
+* we create a new file `touch cassandra.properties` and use vi to edit it adding a name and uri to connector
+```
+connector.name=cassandra
+cassandra.contact-points=127.0.0.1
+```
+* go back to presto root and start it `bin/launcher start` and confirm with browser port 8090
+* start cli `bin/presto --server 127.0.0.1:8090 --catalog hive,cassandra` in production we would connect to presto with a ODBC driver
+* we check connections with cassandra and hive adn fire up combined queries
+```
+show tables from cassandra.movielens;
+describe cassandra.movielens.users;
+select * from cassandra.movielens.users limit 10;
+select * from hive.default.ratings limit 10;
+select u.occupation, count(*) from hive.default.ratings r join cassandra.movielens.users u on r.user_id = u.user_id group by u.occupation; # group users per occupation and see how many ratings there are
+```
+* in docs we see all the different connectors available from presto. we just have to add config files like we did for cassandra
+* ext cli `quit`
+* stop presto `bin/launcher stop`
+* stop cassandra `service cassandra stop`
+* stop vm
+
+## Section 8: Managing your Cluster
+
+### Lecture 65. YARN explained
+
 * 
+
+### Lecture 66. Tez explained
