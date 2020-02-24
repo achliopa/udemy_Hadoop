@@ -1119,12 +1119,12 @@ popularAveragesAndCounts = averagesAndCounts.filter("count > 10")
 
 * we launch our cluster and login to Ambari as maria_dev
 * we ll repeat the exercise we did when we tested our cluster with Hive.
-* now we will get back the moive names and not just ids of most popular movies
+* now we will get back the movie names and not just ids of most popular movies
 * we got to Hive View
 * we are ready to write and execute queries but we need data to work on
 * if we have ratings table from prev exercise in the defaul DB delete it with `DROP TABLE ratings` and hit refresh
 * we upload data in Hive with Ambari.
-* we now that our data is tabular TAB separated. we go to 'Upload Table' => 'Settings' => Field Delim: TAB (9) => Choose File => select u.data from local FS => give Table Name: ratings => Name the columns 
+* now that our data is tabular TAB separated. we go to 'Upload Table' => 'Settings' => Field Delim: TAB (9) => Choose File => select u.data from local FS => give Table Name: ratings => Name the columns 
     * col1: userID
     * col2: movieID
     * col3: rating
@@ -1255,7 +1255,7 @@ sqoop export --connect jdbc:mysql://localhost/movieles  -m 1 \
 
 * we use a terminal to connect to the Hortonworks sandbox as maria_dev on pot 2222.
 * mysql is preinstalle on Hortonworks Sandbox
-* we login `mysql -u root -p` password is 'hadoop'
+* we login `mysql -u root -p` password is 'hortonworks1'
 * we create amovielens DB `create database movielens;`
 * we show daabases to see its there `show databases`
 * we `exit`
@@ -1284,10 +1284,13 @@ ORDER BY ratingCount;
 * we now have our MySQL DB ready in our cluster
 * we will use sqoop to import data from DB to the cluster
 * we first to set permissions in our DB
-* we log in mysql cli and issue `GRANT ALL PRIVILEDGES ON movielens.* to ''@'localhost';`
+* we log in mysql cli and issue `GRANT ALL PRIVILEGES ON movielens.* to ''@'localhost';`
 * so any localhost user can do anything to the DB
 * we are still in sandbox ssh session as maria_dev
 * we run sqoop import command `sqoop import --connect jdbc:mysql://localhost/movielens --driver com.mysql.jdbc.Driver --table movies -m 1`
+* in our cluster we fixed it as it didnt work
+    * in mysql `GRANT ALL PRIVILEGES ON movielens.* to 'maria_dev'@'localhost';`
+    * in shell `sqoop import --connect jdbc:mysql://localhost/movielens --driver com.mysql.jdbc.Driver --table movies -m 1 --username maria_dev --password maria_dev`
 * map reduce jobs are riggered to handle our request
 * we log in ambari and go to HDFS view and see the /movies directory created
 * in thre we have a log and the actual data file. its 1 as we set one mapper
