@@ -2115,7 +2115,7 @@ FROM topMovieIDs t JOIN movielens.names n ON t.movie_id = n.movie_id;
 * select tez view in ambari and look at last job. we can confirm the duration there
 * we have also visualization of the graph
 
-### 68. Mesos explained
+### Lecture 68. Mesos explained
 
 * Apache MESOS is a Resource Negotiator like YARN
 * MESOS is not directly linked with hadoop
@@ -2134,4 +2134,122 @@ FROM topMovieIDs t JOIN movielens.names n ON t.movie_id = n.movie_id;
     * YARN is optimized for long,analytical jobs like we see in Hadoop
     * Mesos is built to handle that, as well as long-lived processes (servers) and short-lived processes as well
 * How Mesos fits in Hadoop
-    * if we a 
+    * if we are looking for an architecture we can code all our organizations cluster apps against (not just hadoop) Mesos can be really useful. we should also look at kubernetes /docker
+    * if all we are about is Spark and Storm from the Hadoop world, Mesos is an option, but YARN is better especially if our data is on HDFS
+    * Spark on Mesos is limited to one executor per slave (node)
+* we can have YARN and Mesos talk together with Myriad
+* siloed approach separates hadoop cluster from general purpose cluster. we might waste resources if our hadoop cluster is underutilized
+* When to use Mesos
+    * if our organization as a whole has chosen to use Mesos to manage its computing resources in general then we can avoiding partitioning off a Hadoop cluster by using Myriad . there is also Hadoop on Mesos package from Cloudera that bypasses YARN entirely
+    * Otherwise probably not use it. 
+
+### Lecture 69. ZooKeeper explained
+
+* It basically keeps track of information that must be synchronized across our cluster
+    * which node is the master?
+    * what tasks are assigned to which workers?
+    * which workers are currently available?
+* it's a tool that applications can use to recover from partial failures in your cluster
+    * disk failures
+    * network storms
+    * clocks drifting
+* an integral part of HBase, High Availability (HA) MapReduce, Drill, Storm, Solr and much more
+* Failure modes that zookeeper can help with
+    * Master crashes, needs to fail over to backup. Zookeeper keeps track who the master is
+    * Worker crashes - its work needs to be redistributed, Zookeper keeps track of workers
+    * Network trouble - part of the cluster cant see the rest of it
+* Zookeper performs "Primitive" operations in a distributed system
+    * Master election
+        * One node registers itself as a master and holds a "lock" on that data
+        * Other nodes cannot become master until that lock is released
+        * Only one node allowed to hold the lock at a time
+    * Crash detection
+        * "Ephemeral" data on a node's availability automatically goes away if the node disconnects, or fails to refresh itself after some tme-out period
+    * Group management
+    * Metadata
+        * List of outstanding tasks, task assignments
+* Zookeper API is not about these primitives
+    * Instead it is built as a more general purpose system that makes it easy for apps to implement it
+    * it looks like a small distributed file system with strong consistency guarantees. if we replace the concept of file with that of 'znode' 
+    * Zookepeer API: create,delete,exists,setData,getData,getChildren
+* Zookeper file system like structure
+```
+/
+/master "master1.foobar.com:2223"
+/workers
+/workers/worker-1 "worker-2.foober.com:2225"
+/workers/worker-2 "worker-5.foober.com:2225"
+```
+
+* Clients can subscribe to notifications about znodes
+    * avoids continuous polling (limits traffic)
+    * example: register for notification on /master. if it goes away, try to take over as the new master
+* Persistent and ephemenral znodes
+    * persistent nodes remain stored untill explicitly deleted. assignemtn of tasks to workers must persist even if master crashes
+    * ephemeral znodes go away if the client that created it crashes or loses its connection to ZooKeeper (if the master crashes, it should release its lock on the znode that indicates which node is the master)  
+* Our app client will link to ZooKeeper client that allows it to talk to the Zookeeper ensemble of ZK servers >1
+* Zookeper ensemble replicates data among servers
+* Zookeper Quorums. spec minimum num of servers that need to agree on sthing to accept the answer. consider inconsistent state whwn facing network separation
+
+### Lecture 70. [Activity] Simulating a failing master with ZooKeeper
+
+* start HDP sandbox
+* ssh to it as maria_dev at port 2222
+* switch to root `su root`
+* cd to `cd /usr/hdp/current/zookeeper-client/` and then to bin `cd /bin`
+* this is where cli resides
+* in a real app we would use a Java or other API to write against ZK
+* run cli `./zkCli.sh`
+* do some operations
+    * `ls /` to see whats inside. all apps have their own presence n zookeeper
+    * if our app runs on a node that want to become the master it should issue a command like `create -e /testmaster "127.0.0.1:2223"` to create an ephemeral test master on localhost listening on port 2223
+    * if we want to see whats in the testmaster `get /testmaster`
+    * we `quit` from cli. our master dies as it was ephemeral. if we relaunch cli and `ls /` into it. testmaster does not exists `get /testmaster`
+    * if we create a testmaster and try to create an identical one we cant as lock takes effect
+* ephemeral nature makes the node responsive
+
+### Lecture 71. Oozie explained
+
+* Oozie orchestrates the Hadoop jobs. its a system for running and scheduling Hadoop tasks
+* Oozie Workflows:
+    * A multi-stage hadoop job: might chain together MapReduce,Hive,Pig,sqoop and distcp tasks. other systems are available via add-ons (like Spark)
+    * A workflow is a Directed Acyclic Graph of actions specified via XML. we can run independent actions in parallel
+* each OOZIE workflow has a start node and an end node
+* fork and join nodes are used to run actions in parallel. join is used to wait for parallel tasks to finish
+* Steps to set up an Oozie Workflow
+    * make sure each action works on its own
+    * make an HDFS dir for our job
+    * create the workflow.xml file and put it in our HDFS folder
+    * create job.properties defining any variables our workflow.xml needs
+        * this goes on our local FS where we launch the job from
+        * we can set these props in the XML
+```
+nameNode=hdfs://sandbox.hortonworks.com:8020
+jobTracker=http://sandbox.hortonworks.com:8050
+queueName=default
+oozie.use.system.libpath=true
+oozie.wf.application.path=${nameNode}/user/maria_dev
+```
+* Running a workflow with OOzie
+* run in masternode passing in the properirs as confg options
+```
+oozie job --oozie http://localhost:11000/oozie-config /home/maria_dev/job.properties -run
+```
+* monitor progress at http://127.0.0.1:11000/oozie
+* Apart from Workflows Ooozie has Oozie Coordinators
+    * schedules workflow execution
+    * launches workflows based on a given start time and frequency
+    * will also wait for required input data to become available
+    * run in exactlythe same way as a workflow, only XML looks different
+* no gui. oozie is barebone. cloudera offers a GUI
+* Oozie bundles
+    * new in Oozie 3
+    * a bundle is a collection of coordinators that can be managed together
+    * example: we can have a bunch of coordinators for processing log data in various ways
+        * by grouping them in a bundle we could suspend them all if there were some problem with log collection
+* Practice oozie
+    * we ll get movielens in MySql
+    * write a Hive script to find movies released before 1940
+    * setup an oozie workflow that uses sqoop to extract movie info from MySQL, then analyze it with Hive
+
+### Lecture 72. [Activity] Set up a simple Oozie workflow
