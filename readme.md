@@ -2040,6 +2040,98 @@ select u.occupation, count(*) from hive.default.ratings r join cassandra.moviele
 
 ### Lecture 65. YARN explained
 
-* 
+* YARN (Yet Another Resource Negotiator)
+    * Introduced in Hadoop 2
+    * Separates the problem of managing resources on you cluster from MapReduce
+    * Enabled development of MapReduce alternatives (Spark,Tez) built on top of YARN
+* It's just there, under the hood, managing the usage of your cluster
+    * there is no reason to write code to manipulate it 
+* YARN sits on top of HDFS (at Cluster Compute Layer)
+    * under YARN Apps (MapReduce,Spark,Tez)
+    * over HDFS (Cluster Storage Layer)
+* YARN is a core Hadoop component
+* Fits tightly into the Hadoop Architecture
+    * a client node  sends request to YARN Resource manager to spin up a MapReduce app
+    * Yarn talks to the NodeManager  running MapReduce App master which in turn asks for resources through YARN on nodes that commnicate through HDFS fetching/storing data
+* How YARN works:
+    * Our app talks to the Resource Manager to distribute work to our cluster
+    * we can specify data locality. which HDFS blocks do we want to process? YARN will try to get our process to th node that has the HDFS blocks 
+    * we can specify different scheduling options for applications.
+        * so we can run more than one application at once on your cluster
+        * FIFO,capcity and Fair schedulers
+            * FIFO runs jobs in sequence
+            * Capacity may run jobs in parallel if there is enough spare capacity
+            * Fair may cut into a larger running job if you just want to squeeze in a small one
+* Building new YARN applications
+    * Why do it? many existing projects to use
+    * Need a DAG (Direct Acyclic Graph) app? Built it on Spark or Tez
+* If we really have to:
+    * There are frameworks: Apache Slider, Apache Twill
+    * There are also some books on the topic
+* Whenever we run Spark,MapReduce, Hive etc... YARN is running behind the scenes
 
 ### Lecture 66. Tez explained
+
+* Apache TEZ is a DAG framework
+* Its another infra part we can use
+    * Makes Hive,Pig and mapReduce jobs faster
+    * An app framework clients can code against as replacement to MapReduce
+* Constructs DAGs (Directed Acyclic Graphs) for more efficient processing of distributed jobs (like Spark)
+*   * Relies on a more hollistc view of the job. eliminates unnecessary steps and dependencies
+* Optimizes physical data flow and resource usage
+* TEZ sits at YARN Applications layer at same level as MapReduce
+* In HDP Sandbox TZ is installed and used as default for Hive
+* We will compare performance of a Hive query using Tez vs MapReduce
+
+### Lecture 67. [Activity] Use Hive on Tez and measure the performance benefit
+
+* we start HDP Sandbox and login to Ambari as admin (we can use maria_dev)
+* we select Hive View
+* in dbs we confirm that movielens db is there and it contains a ratings table
+* we hit upload title => CSV format with | char delimiter. I choose the u.item file
+* table name is 'names', database is 'movielens
+    * col1: movie_id
+    * col2: name
+    * col3: release_date
+* hit: 'Upload Table'
+* refresh database explorer in query tab
+* insert the query TopMovies
+```
+DROP VIEW IF EXISTS topMovieIDs;
+
+CREATE VIEW topMovieIDs AS
+SELECT movie_id, count(movie_id) as ratingCount
+FROM movielens.ratings
+GROUP BY movie_id
+ORDER BY ratingCount DESC;
+
+SELECT n.name, ratingCount
+FROM topMovieIDs t JOIN movielens.names n ON t.movie_id = n.movie_id;
+```
+
+* click on gear icon (properties) => click Add => select 'hive.execution.engine' => select tez
+* run the query time the response time
+* repeat selecting mr (map reduce) as engine
+* select tez view in ambari and look at last job. we can confirm the duration there
+* we have also visualization of the graph
+
+### 68. Mesos explained
+
+* Apache MESOS is a Resource Negotiator like YARN
+* MESOS is not directly linked with hadoop
+    * came out of Twitter, its a system that manages resources across data centers
+    * not only for big data, it can allocate resources for web servers small scripts, etc
+    * meant to solve a more general problem than YARN. a general container management system
+* Mesos isnt really part of Hadoop ecosystem per se, but it can play nice with it
+    * Spark and Storm may both run in Mesos instead of YARN
+    * Hadoop YARN may be integrated with Mesos using Myriad (we dont need to partition our datacenter between hadoop and all else)
+* YARN vs Mesos:
+    * YARN is a monolithic scheduler - you give it a job, and YARN figures out where to run it
+    * Mesos is a two-tiered system
+    * Mesos just mkes offers of resources to our application (framework)
+    * Our framework decides whether to accept or reject them
+    * We also decide our own scheduling algorithm
+    * YARN is optimized for long,analytical jobs like we see in Hadoop
+    * Mesos is built to handle that, as well as long-lived processes (servers) and short-lived processes as well
+* How Mesos fits in Hadoop
+    * if we a 
