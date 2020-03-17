@@ -2253,3 +2253,287 @@ oozie job --oozie http://localhost:11000/oozie-config /home/maria_dev/job.proper
     * setup an oozie workflow that uses sqoop to extract movie info from MySQL, then analyze it with Hive
 
 ### Lecture 72. [Activity] Set up a simple Oozie workflow
+
+* launch HDP sandbox env
+* SSH to it as maria_dev at port 2222
+* login to mysql `mysql -u root -p`
+* list dbs `show databases;` if movielens is there we have what we need. otherwise
+    * `quit`
+    * get data `wget https://media.sundog-soft.com/hadoop/movielens.sql`
+    * go back to mysql `mysql -u root -p`
+    * set encoding to make script pass in `set names 'utf8';` and `set character set utf8;`
+    * create db `create database movielens;` and use it `use movielens;`
+    * populate db using the script `source movielens.sql` (we must be in the pwd where script resides)
+    * check all is in `show tables;`
+    * run a query `select * from movies limit 10;`
+    * give privilendges to local apps like sqoop `grant all priviledges on movielens.* to ''@'localhost';` 
+    * `quit`
+* get a hive script `wget http://media.sundog-soft.com/hadoop/oldmovies.sql`  and peek into it `less oldmovies.sql`
+* it drops an existing table and creates an external one
+* sqoop will extract data from SQL table. hive will take that data and put them in hive
+* the results of the query will be placed in an output directory
+* we get the oozie workflow file `wget http://media.sundog-soft.com/hadoop/workflow.xml`
+* we look into it
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<workflow-app xmlns="uri:oozie:workflow:0.2" name="old-movies">
+    <start to="sqoop-node"/>
+ 
+    <action name="sqoop-node">
+        <sqoop xmlns="uri:oozie:sqoop-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${nameNode}/user/maria_dev/movies"/>
+            </prepare>
+ 
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <command>import --connect jdbc:mysql://localhost/movielens --driver com.mysql.jdbc.Driver --table movies -m 1</command>
+        </sqoop>
+        <ok to="hive-node"/>
+        <error to="fail"/>
+    </action>
+  
+    <action name="hive-node">
+        <hive xmlns="uri:oozie:hive-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${nameNode}/user/maria_dev/oldmovies"/>
+            </prepare>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <script>oldmovies.sql</script>
+            <param>OUTPUT=/user/maria_dev/oldmovies</param>
+        </hive>
+        <ok to="end"/>
+        <error to="fail"/>
+    </action>
+ 
+    <kill name="fail">
+        <message>Sqoop failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+    <end name="end"/>
+</workflow-app>
+```
+
+* uses oozie as app
+* sets a start node which is a sqoop node containing sqoop config (its the local for the sandbox)
+* prepare action runs before sqoop job deleting old data
+* it sets env props
+* command tag runs the sqoop task
+* hive node runs next running a hive action. syntax is similar
+* last is end node for cleanup... the workflow is sequential
+* we also get the properties file for the workflow `wget http://media.sundog-soft.com/hadoop/job.properties` we need it before we run the workflow
+```
+nameNode=hdfs://sandbox.hortonworks.com:8020
+jobTracker=http://sandbox.hortonworks.com:8050
+queueName=default 
+oozie.use.system.libpath=true
+oozie.wf.application.path=${nameNode}/user/maria_dev
+```
+
+* we load the files to hdfs to be able to run them 
+```
+hadoop fs -put workflow.xml /user/maria_dev
+hadoop fs -put oldmovies.sql /user/maria_dev
+```
+
+* for the sqoop to connect to mysql we need a connector which we pass to hdfs `hadoop fs -put /usr/share/java/mysql-connector-java.jar /user/oozie/share/lib/lib_20161025075203/sqoop`. DONT RUN IT YET
+* go back to ambari as admin and to files view to see HDFS. look for the oozie lib path above to see whats the xact lib_ folder name and use that in the command above... then run it
+* we added a new dp to oozie so we need to restart it.
+* fire up ambari as admin go to oozie service and restart
+* go back to terminal and run oozie `oozie job --oozie http://localhost:11000/oozie -config /home/maria_dev/job.properties -run` we get a job id
+* go back to ambari and vizit <url>:11000oozie (open port 11000 if running on AWS) and look in the job details
+* go back to ambari at files view and visit /user/maria_dev/oldmovies to see the job output
+* exit sandbox ssh and stop VM (or docker image)
+
+### Lecture 73. Zeppelin overview
+
+* A tool for making DataScience on BigData
+* Apache Zeppelin: A Notebook (Jupyter) interface to our BigData. HELL YEAH!!!!
+* It integrates with Apache Spark
+    * Can run Spark Code interactively (like we can do in spark shell). this speeds up development cycle and allows easy experimentation and exploration of our big data
+    * Can execute SQL queries  directly against SparkSQL
+    * Query results may be visualized in charts and graphs
+    * Makes Spark feel like a DataScience tool
+* Zeppelin has plugable interpreters for a whole bunch of tools (cassandra,hive,hbase, elasticsearch)
+
+### Lecture 74. [Activity] Use Zeppelin to analyze movie ratings, part 1
+
+* fire up HDP and use a browser to visit <url>:9995 (open up port in AWS if running on Cloud)
+* create a new note => name it "Playing with MovieLens"
+* we need to prioritize zeppelin interpreters. click on interpreter binding (gear). drag spark to the top of the list. save
+* Markdown is supported. to edit a markdown cell
+```
+%md
+### Let's make sure Spark is working first!
+Let's see what version we are working with
+```
+* in zepellin spark is preinitialized so 'sc' and 'sql' python objects are available
+* get the version `sc.version`
+* we will use scala in a shell command cell interacting with hdfs
+```
+%sh
+wget http://media.sundog-soft.com/hadoop/ml-100k/u.data -O /tmp/u.data
+wget http://media.sundog-soft.com/hadoop/ml-100k/u.item -O /tmp/u.item
+echo "Downloaded!"
+```
+
+* we keep firing bash commands for data prep and connect hdfs
+```
+%sh
+hadoop fs -rm -r -f /tmp/ml-100k
+hadoop fs -mkdir /tmp/ml-100k
+hadoop fs -put /tmp/u.data /tmp/ml-100k/
+hadoop fs -put /tmp/u.item /tmp/ml-100k/
+```
+
+* we can title the cells =>click gear icon on cell => add title
+* we ll write scala code to load files in spark dataframe
+```
+final case class Rating(movieID: Int, rating: Int)
+val lines = sc.textfile("hdfs:///tmp/ml-100k/u.data").map(x => {val fields = x.split("\t"); Rating(fields(1).toInt, fields(2).toInt)})
+```
+
+* we can now convert it to DF
+```
+import sqlContext.implicits._
+val ratingsDF = lines.toDF()
+
+ratingsDF.printSchema()
+```
+
+* extract valuable data from DF
+```
+val topMovieIDs = ratingsDF.groupBy("movieID").count().orderBy(desc("count")).cache()
+topMovieIDs.show()
+```
+
+* see the results.
+
+### Lecture 75. [Activity] Use Zeppelin to analyze movie ratings, part 2
+
+* we want to see movie titles on results. we will use SQL for that
+* create a sparksql table out of DF
+```
+ratingsDF.registerTempTable("ratings")
+```
+
+* fire up sparksql commands all in the same notebook
+```
+%sql
+SELECT * FROM ratings LIMIT 10
+```
+
+* issue compex query
+```
+%sql
+SELECT rating, COUNT(*) as count FROM ratings GROUP BY rating
+```
+
+* we see the results but also visualize them with the graph vutton
+* simple plots but there are plugins for more complex visuals
+* in a cell we write scala code for spark to add titles
+```
+final case class Movie(movieID: int, title: String)
+
+val lines = sc.textFile("hdfs:///tmp/ml-100k/u.item").map(x => {val fields = x.split('|'); Movie(fields(0).toInt, fields(1))})
+
+import sqlContext.implicits._
+val moviesDF = lines.toDF()
+
+moviesDF.show()
+```
+
+* we convert DF as table
+```
+moviesDF.registerTempTable("titles")
+```
+
+* we can now use ttiles in SQL 
+```
+%sql
+SELECT t.title, count(*) cnt FROM ratings r JOIN titles t ON r.movieID = t.movieID GROUP BY t.title ORDER BY cnt DESC LIMIT 20
+```
+
+* we DL a copy of the notebook in JSON format `wget http://media.sundog-soft.com/hadoop/MovieLens.json`
+* we can import it in Zepellin (import note)
+
+### Lecture 76. Hue overview
+
+* Hue is not avaliable in hortonworks Sandbox but available in Cloudera
+* Hue = Hadoop User Experience
+* Hortonworks:
+    * Ambari used for managements and query / files UI
+    * Zeppelin used for notebook
+* Cloudera:
+    * Hue is used for query / files UI and notebook
+    * Cloudera Manager used for Management
+* Hue is Cloudera's Ambari
+* Cloudera is the king of professional Hadoop distributions
+* Hortonworks is 100% OpenSource (still)
+* Hue has an OOZIE editor. also editors for other stuff (Hive,HBase,Pig,Spark etc)
+* Hue is not Apache its from Cloudera
+* can be installed in hortonworks (tough job)
+* play with a [live demo](https://gethue.com/)
+
+### Lecture 77. Other technologies worth mentioning
+
+* old technologies
+* Ganglia (dead) last updated 2008
+    * Distributed monitoring system (wikipedia used it)
+    * Largerly surpased by Apache Ambari / Cloudr manager / Grafana
+* Chukwa (dead) last updated 2010
+    * system for collecting and analyzing logs from your Hadoop cluster
+    * initially adopted by netflix
+    * surplanted by Flume and Kafka (more GP,faster,easier, more reliable)
+
+## Section 9: Feeding Data to your Cluster
+
+### Lecture 78. Kafka explained
+
+* Streaming Technology to the Hadoop Cluster
+* Kafka is a Publish/Subscribe/Messaging System
+* So far we have just talked about processing historical, existing big data
+    * Sitting in HDFS
+    * Sitting in a Database
+* How data gets into the cluster? Especially if it is BigData?
+    * new log entries from web servers
+    * new sensor data from an IoT system
+    * New stock trades
+* Streaming lets us publish this data, in real time to our cluster
+    * and we can even process it in real time as it comes in!
+* Two Problems
+    * How to get the data from many different sources flowing into the cluster
+    * Processing it when it gets there
+* Apache Kafka
+    * Kafka is a general purpose pubsub messaging system
+    * Kafka servers store  all incoming messages from publishers for some period of time, and publishes  them to a stream of data called a topic
+    * Kafka consumers subscribe to one or more topics and receive data as its published
+    * a stream / topic can have many different consumers, all with their own position in the stream maintained
+    * not just for Hadoop
+* Kafka Architecure
+    * A kafka server cluster sits in the center of apps
+    * Apps can be Producers of data (input),Consumers of Data (output), Stream Processors (InpputOutput)
+    * Kafka can talk to DB connectors to get orstore data (InputOutput)
+* How Kafka Scales
+    * Kafka itself may be distributed aong many processes on many servers, it will distribute the storage of stream data as well
+    * Consumers may also be distributed, consumers of the same group will have messages distributed amogst them. consumers of different groups wll get their own copy of each message
+* We will:
+    * Start Kafka in sandbox
+    * setup a topic (publish data to it and watch it get consumed)
+    * setup a file connector (monitor a log file and publish additions to it)
+
+### Lecture 79. [Activity] Setting up Kafka, and publishing some data.
+
+* 
