@@ -2536,4 +2536,22 @@ SELECT t.title, count(*) cnt FROM ratings r JOIN titles t ON r.movieID = t.movie
 
 ### Lecture 79. [Activity] Setting up Kafka, and publishing some data.
 
-* 
+* we start sandbox
+* go to ambari on 8080 and login as admin
+* go to kafka at service list and click start
+* we have a kafka cluster of 1 server running
+* we SSH onto Sandbox at 2222 as maria_dev
+* kafka lives in `/usr/hdp/current/kafka-broker/` we cd into it and cd into `cd bin`
+* kafka depends on zookeeper to know what topics exist
+* we start a topic `./kafka-topics.sh --create --zookeeper sandbox.hortonworks.com:2181 --replication-factor 1 --partitions 1 --topic sakis`
+* with topic created we can list it `./kafka-topics.sh --list --zookeper sandbox.hortonworks.com:2181` and indeed we see our new topic
+* we will publish some data to the topic `./kafka-console-producer.sh --broker-list sandbox.hortonworks.com:6667 --topic sakis`
+* the above command binds stdinput to the topic. whatever we type gets published in the topic
+* type some random data... the data go to kafka and wait there for someone to consume them
+* fire up a second terminal ssh to sandox like before and cd back to kafka `cd /usr/hdp/current/kafka-broker/bin`
+* start a consumer `./kafka-console-consumer.sh --bootstrap-server sandbox.hortonworks.com:6667 --zookeper sandbox.hortonworks.com:2181 --topic sakis --from-beginning`
+* this script binds stdoutput to kafka consumer and gets topic stream from beginning purging the buffered data
+* if i now type data to first terminal they near instantly are appearing in second when i press enter ... SWEET
+* stop both processes
+
+### Lecture 80. [Activity] Publishing web logs with Kafka
