@@ -2861,4 +2861,34 @@ if __name__ == "__main__":
 
 ### Lecture 87. Exercise solution: Aggregating HTTP access codes with Spark Streaming
 
-* 
+* both mods in SparkFlume.py
+* 1st mod
+```
+def extractStatus(line):
+    exp = pattern.match(line)
+    if exp:
+        status = exp.groupdict()["status"]
+        if status:
+           return status
+```
+* 2nd mod: ` urlCounts = urls.map(lambda x: (x, 1)).reduceByKeyAndWindow(lambda x, y: x + y, lambda x, y : x - y, 300, 5)`
+
+### Lecture 88. Apache Storm: Introduction
+
+* Αpache Storm is another way to proces streaming Data (more realtime)
+* Another framework for processing continuous streams of data on a cluster (can run on top of YARN like Spark)
+* Works on individual events, not micro batches (like Spark Streaming does) (if we want sub second latency, Apache Storm can do the trick)
+* Storm Jargon:
+    * A stream consists of tuples that flow through
+    * Spouts that are sources o stream data (Kafka,Twitter, etc)
+    * Bolts that process stream data as its received (transform, aggregate, write to DBs /HDFS)
+    * a topology is a graph of spouts and bolts that process the stream
+* Storm Architecture:
+    * Nimbus node (job tracker)
+    * Zookeeper organizes
+    * Supervisor nodes do the job run the workers
+* Storm apps
+    * Usually in Java. Bolts can be directed through scripts in other langs
+    * Storm Core: lower level API "atleast one" semantics
+    * Trident: Highlevel API "exactly once" semantics
+    * Storm runs our apps "forever" once started unless we stop them
