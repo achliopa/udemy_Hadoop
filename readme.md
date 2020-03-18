@@ -2555,3 +2555,310 @@ SELECT t.title, count(*) cnt FROM ratings r JOIN titles t ON r.movieID = t.movie
 * stop both processes
 
 ### Lecture 80. [Activity] Publishing web logs with Kafka
+
+* we will use connector to load data from logs to kafka
+* in one of our open terminals cd back `cd ..` and cd into conf
+* we see a bunch of config files
+* cp the config file of interest to home dir 
+```
+cp connect-standalone.properties ~/
+cp connect-file-sink.properties ~/
+cp connect-file-source.properties ~/
+```
+
+* cd to homedir and edit the files. use vi or nano `vi connect-standalone.properties`
+* edit botstrap servers `bootstrap.servers=sandbox.hortonworks.com:6667`
+* edit connect-file-sink.properties and change the file name where we want to store the results to `file=/home/maria_dev/logout.txt` and change topic to `topics=log-test`
+* edit connect-file-source.properties. the file we will listen to (like a web server log) is `file=/home/maria_dev/access_log_small.txt` and topic is `topics=log-test`
+* being at home dir we get the dummy log file `wget http://media.sundog-soft.com/hadoop/access_log_small.txt`
+* apart from using the connector to get and send the data we need to set a consumer
+* in another terminal being at /usr/hdp/current/kafka-broker/bin we run `./kafka-console.consumer.sh --bootstrap-server sandbox.hortonworks.com:6667 --topic log-test --zookeeper localhost:2181`
+* we start the connector that listen to changes to the file and pblishes it to kafka 
+    * cd into `cd /usr/hdp/current/kafka-broker/bin` and run the script `./connect-standalone.sh ~/connect-standalone.properties ~/connect-file-source.properties ~/connect-file-sink.properties`
+* we see in the consumer terminal the log file streamed
+* if we launch a 3rd terminal go to ~ and check the logout.txt file which has the stream aoutput by the connector. we then write something in terminal echoing it to the log file to see the stream in action `echo "This is a new line" >> access_log_small.txt`
+* close all and shitdown kafka service from ambari
+
+### Lecture 81. Flume explained
+
+* Flume is another way to stream data into the cluster
+* made with Hadoop in mind with built in sinks for HDFS and Hbase
+* initilly made to handle log aggregation
+* HDFS and HBase do not like a lot of traffic. Flume acts as middleware or buffer protecting the cluster
+* A Flume agent consists of 3 components: Source, Channel, Sink
+* Source connects to a datasource
+    * where data is coming from
+    * can optionally have channel selectors and interceptors (to manipulate data)
+* Chanel is a file channel or mem channel
+    * how the data is transferred (via memory or files)
+* Sink connects to a data destination
+    * where the data is going
+    * can be organized into sink groups
+    * a sink can connect to only one channel (channel is notified to delete a file once a sink has processed it)
+* Kafka keeps data to serve multiple client, flume purges
+* Builtin Source Types
+    * Spooling directory
+    * Avro
+    * Kafka
+    * Exec
+    * Thrift
+    * Netcat
+    * HTTP
+    * Custom
+* builtin Sink Types
+    * HDFS
+    * Hive
+    * HBase
+    * Avro
+    * Thrift
+    * Elassticsearch
+    * Kafka
+    * Custom
+* Using Avro agents can connect to other agents as well making multitier interfaces to data source
+* it limits the amount of traffic as we go from source to destination. 1st tier of agents (more) sit close to app servers taking the bulk of traffic. avro glues agents together
+* Flume acts like a buffer between data and our cluster
+* Flume is built in to hortoworks sandbox
+* we will play with a simple agent
+    * Source: netcat
+    * Channel: memory
+    * Sink: Logger
+
+### Lecture 82. [Activity] Set up Flume and publish logs with it.
+
+* start HDP and SSH to it as maria_dev in port 2222
+* we need to setup a set of config files
+* the flume config file we will use we get it from `wget http://media.sundog-soft.com/hadoop/example.conf`
+```
+# example.conf: A single-node Flume configuration
+
+# Name the components on this agent
+a1.sources = r1
+a1.sinks = k1
+a1.channels = c1
+
+# Describe/configure the source
+a1.sources.r1.type = netcat
+a1.sources.r1.bind = localhost
+a1.sources.r1.port = 44444
+
+# Describe the sink
+a1.sinks.k1.type = logger
+
+# Use a channel which buffers events in memory
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 1000
+a1.channels.c1.transactionCapacity = 100
+
+# Bind the source and sink to the channel
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+```
+
+* we setup source sink and channel
+* we start a new session in new terminal and start flume with the configuration
+* `cd /usr/hdp/current/flume-server/` then `bin/flume-ng agent --conf conf --conf-file ~/example.conf --name a1 -Dflume.root.logger=INFO,console`
+* we connect with telent from the other terminal to port 44444 `telnet localhost 44444` and start typing in console
+* on the other terminal we see the log output when we hit enter
+
+### Lecture 83. [Activity] Set up Flume to monitor a directory and store its data in HDFS
+
+* we are in hove dir as paria_dev with SSh terminal in sandbox
+* we get a new config file `wget http://media.sundog-soft.com/hadoop/flumelogs.conf`
+```
+# Name the components on this agent
+a1.sources = r1
+a1.sinks = k1
+a1.channels = c1
+
+# Describe/configure the source
+a1.sources.r1.type = spooldir
+a1.sources.r1.spoolDir = /home/maria_dev/spool
+a1.sources.r1.fileHeader = true
+a1.sources.r1.interceptors = timestampInterceptor
+a1.sources.r1.interceptors.timestampInterceptor.type = timestamp
+
+# Describe the sink
+a1.sinks.k1.type = hdfs
+a1.sinks.k1.hdfs.path = /user/maria_dev/flume/%y-%m-%d/%H%M/%S
+a1.sinks.k1.hdfs.filePrefix = events-
+a1.sinks.k1.hdfs.round = true
+a1.sinks.k1.hdfs.roundValue = 10
+a1.sinks.k1.hdfs.roundUnit = minute
+
+# Use a channel which buffers events in memory
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 1000
+a1.channels.c1.transactionCapacity = 100
+
+# Bind the source and sink to the channel
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+```
+
+* for source we use a spooldir to monitor a directory. files will also get timestamped before going throguh the channel to sink (hdfs)
+* in the sink we create new folders in 10min basis storing files
+* timestamp will be parsed automatically
+* channel will be a mem channel
+* we create the spool dir `mkdir spool`
+* login to ambari as admin and go to file view and in /user/maria_dev create a 'flume' folder
+* in terminal we run te script 
+* `cd /usr/hdp/current/flume-server/` then `bin/flume-ng agent --conf conf --conf-file ~/flumelogs.conf --name a1 -Dflume.root.logger=INFO,console`
+* we cp a file in ~/spool `cp access_log_small.txt spool/sakis.txt` we see the file in ambari ad file view in /uer/maria_dev/flum/date/.. also in local dir file is tagged COMPLETED
+
+## Section 10: Analyzing Streams of Data
+
+### Lecture 84. Spark Streaming: Introduction
+
+* Process data as they are received
+* Why Spark Streaming?
+    * Big Data never stops
+    * Analyze data streams in real time, instead of in huge batch jobs daily
+    * Analyzing streams of web log data to react to user behaviour
+    * Analyze streams of real-time sensor data for "IoT" stuff
+* Spark Streaming High Level Architecture
+    * Data Streams (from Flume,Kafka etc) => Receivers of Spark Cluster
+    * Spark Streaming discretizes data to small chunks (Batches of Data) for a specified time increment called RDDs
+    * RDDs can then be transformed or processed across the spark cluster
+* Spark Streaming is not pure RealTime
+* Work can be distributed on the cluster. processing of RDDs can happed in parallel on different worker nodes
+* DStreams (Discretized Streams): an abstraction on top of RDDs
+    * Generates the RDDs for each time step, and can produce output at each time step
+    * Can be transformed and acted on in much the same way as RDDs
+    * Or we can access their underlying RDDs if we need them
+* DStream is different than Spark batch processing as it process batches continuously when new data arrive
+* Common stateless transformations of DStreams: Map, Flatmap, Filter, reduceByKey much like Spark RDDs
+* Stateful data
+    * We caan also maintain a long-lived state on a DStream
+    * e.g. running totals, broken down by keys
+    * aggregating session data in web activity
+* Stateful Data is possible with Windowing
+    * Allow us to compute results across a longer time period than our batch interval
+    * Top-sellers from the past hour: we might process data every  second (batch interval) but maintain a window of one hour
+    * The window "slides" as times goes on, to respresent batches within the window interval
+* Batch interval vs Slide Interval vs Window Interval
+    * the batch interval is how often data is captured into a DStream
+    * the slide interval is how often a windowed transformation is computed
+    * the window interval is how far back in time the windowed transformation goes
+* Each batch contains one second of data (the batch interval)
+* Example We set up a window interval of 3 seconds and a slide interval of 2 seconds
+* Windowed transformations: code
+    * the batch interval is set up with our SparkContext: `ssc = StreamingContext(sc,1)`
+    * 1 is batch interval
+    * we can use reduceByWindow() or reduceByKeyAndWindow() to aggregate data across a longer period of time
+```
+hashtagCounts = hashtagKeyValues.reduceByKeyAndWindow(lambda x,y: x+y, lambda x,y: z-y,300,1)
+```
+
+    * 300 is a window interval
+    * 1 is the slide interval (1sec)
+    * compute every 1sec for past 300sec , sampling 1sec
+* What is structured streaming? the future
+    * A new, high-level API for streaming structured data (Available in Spark 2 and 2.1 as an experimental release). Its the future
+    * Uses DataSets (like a DataFrame, but with more explicit type information). A Dataframe is a DataSet[Row]
+* Structured Streaming is like a Spark3 DataFrame that never ends (unbounded table)
+    * new data just keeps getting appended to it (new rows)
+    * our continuous application keeps querying updated data as it comes in
+* Advantages of Structured Streaming
+    * streaming code looks a lot like the equivalent non-streaming code
+    * stuctured data allows Spark to represent data more efficiently
+    * SQL-style queries allow for query optimization opportunities and even better performance
+    * Interoperability with other Spark components based on Datasets (MLLib is also movined to DataSets as its primary API)
+    * DataSets in general  is the direction Spark is moving
+* Once we have a SparkSession, we can stream data, query it, and write out the results
+    * 2 lines of code to stream in structured JSON log data, count up "action" vals for each hour and write the results to a DB
+```
+val inputDF = spark.readStream.json("s3://logs")
+inputDF.groupBy($"action:,window($"time","1 hour")).count().writeStream.format("jdbc").start("jdbc:mysql...")
+```
+* Example: Spark Streaming with Flume
+    * we set up Flume to use a spooldir source like we ve seen
+    * we will use an Avro sink to connect it to our Spark Streaming job! (we ll use a window to aggregate how often each unique URL appears from the access log)
+    * Using Avro in this manner is a "push" mechanism to Spark Streaming (we can also "pull" data using a custom sink for Spark Streaming)
+* Logs => Flume Source (spooldir) => Flume Channel (memory) =>  Flume Sink (Avro) => Spark Streaming => Console
+
+### Lecture 85. [Activity] Analyze web logs published with Flume using Spark Streaming
+
+* fire up HDP and SSH to it as maria_dev at 2222
+* setup Flume for SparkStreaming
+* we use a ready config file for flume `wget http://media.sundog-soft.com/hadoop/sparkstreamingflume.conf` sink is avro communicating at 9092
+* we get the readymade sparkstreaiming script `wget http://media.sundog-soft.com/hadoop/SparkFlume.py`
+* in this Python script we set regex expressions to extract data from logs
+```
+import re
+
+from pyspark import SparkContext
+from pyspark.streaming import StreamingContext
+from pyspark.streaming.flume import FlumeUtils
+
+parts = [
+    r'(?P<host>\S+)',                   # host %h
+    r'\S+',                             # indent %l (unused)
+    r'(?P<user>\S+)',                   # user %u
+    r'\[(?P<time>.+)\]',                # time %t
+    r'"(?P<request>.+)"',               # request "%r"
+    r'(?P<status>[0-9]+)',              # status %>s
+    r'(?P<size>\S+)',                   # size %b (careful, can be '-')
+    r'"(?P<referer>.*)"',               # referer "%{Referer}i"
+    r'"(?P<agent>.*)"',                 # user agent "%{User-agent}i"
+]
+pattern = re.compile(r'\s+'.join(parts)+r'\s*\Z')
+
+def extractURLRequest(line):
+    exp = pattern.match(line)
+    if exp:
+        request = exp.groupdict()["request"]
+        if request:
+           requestFields = request.split()
+           if (len(requestFields) > 1):
+                return requestFields[1]
+
+
+if __name__ == "__main__":
+
+    sc = SparkContext(appName="StreamingFlumeLogAggregator")
+    sc.setLogLevel("ERROR")
+    ssc = StreamingContext(sc, 1)
+
+    flumeStream = FlumeUtils.createStream(ssc, "localhost", 9092)
+
+    lines = flumeStream.map(lambda x: x[1])
+    urls = lines.map(extractURLRequest)
+
+    # Reduce by URL over a 5-minute window sliding every second
+    urlCounts = urls.map(lambda x: (x, 1)).reduceByKeyAndWindow(lambda x, y: x + y, lambda x, y : x - y, 300, 1)
+
+    # Sort and print the results
+    sortedResults = urlCounts.transform(lambda rdd: rdd.sortBy(lambda x: x[1], False))
+    sortedResults.pprint()
+
+    ssc.checkpoint("/home/maria_dev/checkpoint")
+    ssc.start()
+    ssc.awaitTermination()
+```
+
+* we have a map function to extract lines from apache log
+* if patern matches it extracts it and adds it to a group dictionary and get the URL accessed
+*  in main we add the spark context, and stream context
+* then we hook up flume. and connect to it with avro. we push from flume to spark stream with avro
+* pull is more robust but requires a custom sink
+* DStream from Flume has 1second batch. lambda methods extract the line
+* DStream guarantees repetition over and over again
+* we reduce URLs to tuples with a flag. we  use reducebyKEy to add the indexes and count them up for the window of 300 and sort
+* checkpoint idr is used to store state. it is mandatory everytime we run a windowed operation in sparkstreaming
+* we add the checkpoint dir in homedir `mkdir checkpoint`
+* hardcode the Spark to v2 `export SPARK_MAJOR_VERSION=2`
+* setup the flume package on spark and invoke the script  `spark-submit --packages org.apache.spark:spark-streaming-flume_2.11:2.0.0 SparkFlume.py`
+* streaning is expecting data but flume is not running
+* start flume in a new terminal `cd /usr/hdp/current/flume-server/` and `bin/flume-ng agent --conf --conf-file ~/sparkstreamingflume.conf --name a1`
+* open a 3rd terminal and get a big access log and put it to spool dir `wget http://media.sundog-soft.com/hadoop/access_log.txt` 
+* flume picks it up and sparkstream does the aggregation
+* stop scripts and exit
+
+### Lecture 86. [Exercise] Monitor Flume-published logs for errors in real time
+
+* modify the python script. aggregate how many times each http status code appeared in the log
+* change the slide interval of the job from 1 sec to 5sec
+
+### Lecture 87. Exercise solution: Aggregating HTTP access codes with Spark Streaming
+
+* 
