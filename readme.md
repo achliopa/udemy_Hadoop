@@ -2892,3 +2892,396 @@ def extractStatus(line):
     * Storm Core: lower level API "atleast one" semantics
     * Trident: Highlevel API "exactly once" semantics
     * Storm runs our apps "forever" once started unless we stop them
+* Storm vs Spark Streaming
+    * There is something to be said for having the rest of Spark at your disposal
+    * if we want true RT bprocessing (sub-second) of events as they come, Storm is our choice
+    * Core Storm offers "tumbling windows" in addition to "sliding windows"
+    * Kafka + Storm seems to be a popular combo
+* We will run the WordCount topology for practice
+    * Spout (random sentence generator) => Bolt (split into words) => Bolt (Keep count of words and emit results)
+
+### Lecture 89. [Activity] Count words with Storm
+
+* start HDP VM, go to ambari and login as admin
+* Select storm servic eand start
+* start kafka service
+* start SSH conn as maria_dev at 2222 and `cd /usr/hdpcurrent` and `cd storm-client/`
+* look for the example `cd contrib/storm-starter/src/jvm/org/apache/storm/starter`
+* in there we see a javafile 'WordCountTopology.java
+```
+package org.apache.storm.starter;
+
+import java.util.HashMap;
+import java.util.Map;
+import org.apache.storm.starter.spout.RandomSentenceSpout;
+import org.apache.storm.task.ShellBolt;
+import org.apache.storm.topology.BasicOutputCollector;
+import org.apache.storm.topology.ConfigurableTopology;
+import org.apache.storm.topology.IRichBolt;
+import org.apache.storm.topology.OutputFieldsDeclarer;
+import org.apache.storm.topology.TopologyBuilder;
+import org.apache.storm.topology.base.BaseBasicBolt;
+import org.apache.storm.tuple.Fields;
+import org.apache.storm.tuple.Tuple;
+import org.apache.storm.tuple.Values;
+
+/**
+ * This topology demonstrates Storm's stream groupings and multilang
+ * capabilities.
+ */
+public class WordCountTopology extends ConfigurableTopology {
+    public static void main(String[] args) throws Exception {
+        ConfigurableTopology.start(new WordCountTopology(), args);
+    }
+
+    @Override
+    protected int run(String[] args) throws Exception {
+
+        TopologyBuilder builder = new TopologyBuilder();
+
+        builder.setSpout("spout", new RandomSentenceSpout(), 5);
+
+        builder.setBolt("split", new SplitSentence(), 8).shuffleGrouping("spout");
+        builder.setBolt("count", new WordCount(), 12).fieldsGrouping("split", new Fields("word"));
+
+        conf.setDebug(true);
+
+        String topologyName = "word-count";
+
+        conf.setNumWorkers(3);
+
+        if (args != null && args.length > 0) {
+            topologyName = args[0];
+        }
+        return submit(topologyName, conf, builder);
+    }
+
+    public static class SplitSentence extends ShellBolt implements IRichBolt {
+
+        public SplitSentence() {
+            super("python", "splitsentence.py");
+        }
+
+        @Override
+        public void declareOutputFields(OutputFieldsDeclarer declarer) {
+            declarer.declare(new Fields("word"));
+        }
+
+        @Override
+        public Map<String, Object> getComponentConfiguration() {
+            return null;
+        }
+    }
+
+    public static class WordCount extends BaseBasicBolt {
+        Map<String, Integer> counts = new HashMap<String, Integer>();
+
+        @Override
+        public void execute(Tuple tuple, BasicOutputCollector collector) {
+            String word = tuple.getString(0);
+            Integer count = counts.get(word);
+            if (count == null) {
+                count = 0;
+            }
+            count++;
+            counts.put(word, count);
+            collector.emit(new Values(word, count));
+        }
+
+        @Override
+        public void declareOutputFields(OutputFieldsDeclarer declarer) {
+            declarer.declare(new Fields("word", "count"));
+        }
+    }
+}
+```
+* in the code a WordCountTopology class is set. it will listen for Spout of random sentences
+* it uses a python script to split sentence i
+* Bolt extract words another BOlt counts words
+* main() sets the topology
+* we run storm `storm jar /usr/hdp/current/storm-client/contrib/storm-starter/storm-starter-topologies-*.jar org.apache.storm.starter.WordCountTopology wordcount`
+* we submitted a job in storm
+we go to Storm UI in our browser at port 8744 (open i in AWS firewall)
+* job started but is doing nothing. check 5 min later
+* to stop job in Topology Actions click Kill
+* in terminal `cd /usr/hdp/current/storm-client/logs` and `cd workers-artifacts` ls  to see the folders generated and cd into one wordcount folder inside we see folders for each port. cd into one and tail the log
+
+### Lecture 90. Flink: An Overview
+
+* Flink (German name for quick and nimble)
+* Another stream processing engine - most similar to Storm
+* Can run on standalone cluster on top of YARN or Mesos
+* Highly scalable (1000s of nodes) (Alibaba uses it)
+* Fault tolerant (can survive failures and guarantee exactly once processing) it uses state snapshots to achieve this
+* Up & Coming Quickly
+* Flink is faster than Storm (A lot faster)
+* Flink offers real streaming  like Storm (but if you are usin Trident with Storm you use micro-batches)
+* Flink offers a highe level API like Trident or Spark, but while still doing real-time streaming
+* Flink has good Scala support, like Spark Streaming
+* Flink has an ecosystem of its own, like Spark
+* Flink can process data based on event times, not when data was received
+    * impressive windowing system
+    * this plus real-time streaming and exactly-once semantics is important  for financial applications
+* But is the youngest of the technologies
+* Spark  Streming "Structured Streaming" paves the way for real event-based streaming in Spark
+* Flink can run on: Standalone Cluster, YARN/Hadoop, AWS/GoogleCloud, Local
+* APIs
+    * DataSet API: Flink ML, Gelly,Table
+    * DataStream API:  CEP (event processing), Table
+* Flink Connectors:
+    * HDFS
+    * Cassandra
+    * kafka
+    * Others (Elasticsearch,NiFi,Redis,RabbitMQ)
+
+### Lecture 91. [Activity] Counting words with Flink
+
+* start the sandbox and SSH to it as amria_dev t port 2222
+* we need to install Flink. go to [Flink](https://flink.apache.org) and download Flink for Hadoop 2.7
+* we will download an old version like the course `wget https://archive.apache.org/dist/flink/flink-1.2.0/flink-1.2.0-bin-hadoop27-scala_2.10.tgz` on homeidr
+* we will run it in standalone mode not on hadoop
+* uncompress `tar -xvf ....` and cd into it
+* cd in conf `cd conf` and edit 'flink-conf.yaml' to open ports. edit ui port to `jobmanager.web.port:8082`
+* cd back and start flink `./bin/start-local.sh`
+* with flink running visit the UI with browser at 8082
+* no tasks running. we wil pull a task from [github](https://github.com/apache/flink/blob/release-1.3/flink-examples/flink-examples-streaming/src/main/scala/org/apache/flink/streaming/scala/examples/socket/SocketWindowWordCount.scala). flink tasks code look like spark streaming
+```
+package org.apache.flink.streaming.scala.examples.socket
+
+import org.apache.flink.api.java.utils.ParameterTool
+import org.apache.flink.streaming.api.scala._
+import org.apache.flink.streaming.api.windowing.time.Time
+
+/**
+ * Implements a streaming windowed version of the "WordCount" program.
+ * 
+ * This program connects to a server socket and reads strings from the socket.
+ * The easiest way to try this out is to open a text sever (at port 12345) 
+ * using the <i>netcat</i> tool via
+ * <pre>
+ * nc -l 12345
+ * </pre>
+ * and run this example with the hostname and the port as arguments..
+ */
+object SocketWindowWordCount {
+
+  /** Main program method */
+  def main(args: Array[String]) : Unit = {
+
+    // the host and the port to connect to
+    var hostname: String = "localhost"
+    var port: Int = 0
+
+    try {
+      val params = ParameterTool.fromArgs(args)
+      hostname = if (params.has("hostname")) params.get("hostname") else "localhost"
+      port = params.getInt("port")
+    } catch {
+      case e: Exception => {
+        System.err.println("No port specified. Please run 'SocketWindowWordCount " +
+          "--hostname <hostname> --port <port>', where hostname (localhost by default) and port " +
+          "is the address of the text server")
+        System.err.println("To start a simple text server, run 'netcat -l <port>' " +
+          "and type the input text into the command line")
+        return
+      }
+    }
+    
+    // get the execution environment
+    val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
+    
+    // get input data by connecting to the socket
+    val text = env.socketTextStream(hostname, port, '\n')
+
+    // parse the data, group it, window it, and aggregate the counts 
+    val windowCounts = text
+          .flatMap { w => w.split("\\s") }
+          .map { w => WordWithCount(w, 1) }
+          .keyBy("word")
+          .timeWindow(Time.seconds(5))
+          .sum("count")
+
+    // print the results with a single thread, rather than in parallel
+    windowCounts.print().setParallelism(1)
+
+    env.execute("Socket Window WordCount")
+  }
+
+  /** Data type for words with count */
+  case class WordWithCount(word: String, count: Long)
+}
+```
+* we ll open a port to listen to `nc -l 9000` 
+* open a new terminal and cd into flink dir in home
+* we run the script on another `./flink run examples/streaming/SocketWindowWordCount.jar --port 9000` which is the compiled scala app in java
+* we go back to UI and see the app running
+* in the terminal where we opened the port we write some works in terminal hit enter (repeat)
+* * we will feed it data. open another terminal cd into flink and `cd log` cat the .out log and see that indeed we get word counts
+
+## Section 11: Designing Real-World Systems
+
+### Lecture 92. The Best of the Rest
+
+* Impala
+    * Cloudera alternative to Hive
+    * Massively parallel SQL engine on Hadoop
+    * Impala is always running so we avoid start up costs when starting a Hive query (Made for Bi-style queries, fast interactive)
+    * Impala is faster than Hive but not so versatile
+    * If using Cloudera is an option
+* Accumulo
+    * Another BigTable clone (like HBase)
+    * But offers a better security model (Cell based access control)
+    * And server-side programming
+    * Consider it for your NoSQL needs if you have complex security requirements (Make sure the systems that need to read this data can talk to it)
+* Redis
+    * A distributed in-mem data store (like memcache)
+    * But its more than cache
+    * Good support for storing data structures
+    * can persist data to disk
+    * can be used as a data store and not just a cache
+    * popular caching layer for web apps
+* Ignite (Apache)
+    * An "in-memory data fabric"
+    * Think of it as an alternative to Redis
+    * But is closer to a database
+        * ACID quarantees
+        * SQL support
+        * But it's all done in-memory
+* Elasticsearch
+    * A distributed document search and analytics engine
+    * Really popular (Wikipedia,The Guardian..)
+    * Can handle things like real time search as you type
+    * When paired with Kibana, great for interactive exploration
+    * AWS offers Elasticsearch service
+* Kinesis (AWS ecosystem)
+    * Amazon Kinesis is basically the AWS version of Kafka
+    * Amazon has a whole ecosystem
+        * Elastice MapReduce (EMR)
+        * S3
+        * ElasticSearch Service / CloudSearch
+        * DynamoDB
+        * AmazonRDS
+        * ElastiCache
+        * AI / Machine Learning services
+    * EMR is easy way to spin up a hadoop cluster on demand
+* Apache NiFi
+    * Directed graphs of data routing (Can connect to Kafka, HDFS, Hive)
+    * Web UI for designing complex systems
+    * Often seen in the context of IoT sensoers, and managing their data
+    * Relevant in that it can be a streaming data source we will see
+* Apache Falcon
+    * A "data governance engine" that sits on top of Oozie
+    * Included in Hortonworks
+    * Like NiFi, it allows construction of data processing graphs
+    * But it's really meant to organize the flow of our data within hadoop
+* Apache Slider
+    * Deployment tool for apps in a YARN cluster
+    * Allows monitoring of apps
+    * Allows growing or shrinking our deployment as its running
+    * Manages mixed configurations
+    * Start/stop applications on our cluster
+    * Incubating
+
+### Lecture 93. Review: How the pieces fit together
+
+* Recap the stack.. all the stuff we have seen so far
+
+### Lecture 94. Understanding your requirements
+
+* Workiing Backwards:
+    * Start with the end user's needs. not from where our data is coming from (sometimes we need to meet in the middle)
+    * what sort of access patterns do we anticipate from our end users? Analytical queries that span large datasets? huge amounts of small transactions for very specific rows of data? Both?
+    * what availability do these users demand?
+    * what consistency do these users demand?
+* Thinkabout requirements
+    * Just how big is our big data? do we need a cluster?
+    * How much internal infrastructure and expertise is available? (should we use AWS or sthing similar? do systems we know fit the bill?)
+    * What about data retention? (do we need to keep data around forever for autditing? do we need to purge them often for privacy?)
+    * What about security? (check with legal dep)
+    * Latency: (how quick do end users need to get the response? milliseconds? then Cassandra or HBase is needed)
+    * Timeliness: can queres be based on day-old data? Minute-old? OOZIE scheduld jobs in Hive/Pig/Spark can cut it. Near Real time? Spark Streaming/Storm/Flink with Kafka or Flume
+* Future proofing
+    * once we decide where to store our "big data" moving it will be really difficult later on. think carefullt before choosing proprietary solutions or cloud based storage
+    * will business analysts want our data in addition to end users?
+* Cheat to win:
+    * does our organization has existing compoents to use? dont build a new data warehouse if we already have one. rebuilding existing technology always has negative business value
+    * whats the least amount of infra we will need to build: import existing data from sqoop if we can. if relaxing "requirements" saves lots of money and time. at least ask
+
+### Lecture 95. Sample application: consume webserver logs and keep track of top-sellers
+
+* A system to track and display the top 10 best-selling items on an e-commerce website
+* Work backwards for requirements:
+* There are millions of end-users, generating thousands of queries per second
+    * It MUST be fast. page latency is important
+    * We need some distributed SQL solution
+    * access pattern is simple: "Give me the current top N sellers in category X"
+* hourly updates probably good enough (consistency not hugely important)
+* must be highly available (customers dont like broken websites)
+* we want partiotion tolerance and availability more than consistency
+* Cassandra is our Choice for Storing Data. if we have MongoDB expertise its OK
+* how data gets in Cassandra?? 
+    * Spark can talk to Cassandra. 
+    * and Spark Streaming can add things up over windows
+* How data get into Spark Streaming
+    * Kafka or Flume - either works
+    * Flume is purpose built for HDFS, which so far we havent said we need
+    * But Flume is also  purpose built for log ingestiong so it might be a good choice (Log4j interceptor on the servers that process purchases?)
+* Security
+    * Purchase data is sensitive. do security review (blasting around raw logs that include Personal Data is bad idea, strip data at the source)
+    * Security considerations may even force us to totally different design. instead of ingesting logs as they are generated, some intermediate DB or publisher may be involved where personal data gets scrubbed
+* Architecture: Purchase Servers => Flume/Zookeper => Spark Streaming => Cassandra => Web App servers
+* We can even build it without Hadoop
+* Other way to do it
+    * Maybe we have an existing πurchase DB, instead of streaming, hourly batch jobs would also meet our requirements. use sqoop + Spark => Cassandra perhaps
+    * Maybe we have inhouse expertise to leverage: using HBase,MongoDB or even Redis is OK, using Kafka insteadof Flume? totally OK
+    * Do this data get used for analytics? might store it to HDFS also 
+
+### Lecture 96. Sample application: serving movie recommendations to a website
+
+* Movie Recommendations at large scale
+* Working backwards
+    * users want to discover movies they haven't yet seen that they might enjoy
+    * their own behaviour (ratings, purchases, views) are probably the best predictors
+    * as before, availability and partition tolerance are important. Consistency not so much
+* Cassandra is out first choice... any NoSQL DB would do.
+* How do Movie recommendations get in Cassandra
+    * We need to do machine learning: Spark MLLib, Flink could be an alternative
+    * Timeliness requirements need to be thought out: Real time ML is a tall order. do we really need recommendation based on the reating we just left??? That would be nice
+* Creative Thinking:
+    * Pre-computing recomendations for every user (isnt timely, wastes resources)
+    * Item based collaborative filtering (store movies similar to other movies(these relationships dont change quickly)). at runtime recommend movies similar to ones we ve liked based on real-time behaviour data.
+    * we need something that can quicly look up movies similar to ones we have liked at scale. could reside withn web app, but probably want our own service for this
+    * we also need to quickly get our past ratings/views/etc
+* we need to build a webservice to create the recomendatins on demand
+* it will talk to a fast NoSQL data store with movie similarities data
+* and it also needs your past ratings/purchased/etc
+* movie similarities (which are expensive) can be updated infrequently, based on log data with views / ratings
+* Αrchitecture:
+    * WebAppServers => behaviour data to Flume => Spark Streaming => HBase => HDFS
+    * Oozie (Run Daily) / Spark/MLLib <=> HBase 
+    * WebAppServers <=> Recs service on YARN/Slider <= HBase
+
+### Lecture 97. [Exercise] Design a system to report web sessions per day
+
+* we work for a big website
+* some manager wanths a graph of total sessions per day
+* and for some reason they dont want to use an existing service for this
+* Reqs
+    * only run daily based on previous day's activity
+    * sessions are defined as traffic from same IP address within a sliding one hour window: Spark Streaming etc. cn handle "stateful" data like this
+    * Lets assume our existing web logs do not have session data in them
+    * Data is only used dor analytic purposes, internally
+* Things to consider:
+    * A daily SQL query run automatically is all we really need
+    * But this query needs some table that contains session data. and that must be build up throughout the day
+
+### Lecture 98. Exercise solution: Design a system to count daily sessions
+
+* WebServers => Kafka => SparkStreaming / Oozie => Hive => HDFS
+* if we already have a DB, use it with Sqoop and skip Hive/HDFS (think about data scale)
+
+## Section 12: Learning More
+
+### Lecture 99. Books and online resources
+
+* 
