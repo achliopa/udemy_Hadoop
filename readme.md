@@ -1561,7 +1561,47 @@ cp ./lib64/libfreeblpriv3.* /lib64
 
 * Cassandra is not meant for HDFS it runs on linux ext4 file system
 * login as maria_dev in the sandbox via ssh port 2222 and switch to root
-* cassandra requires python 2.7. we check the version to see
+* cassandra requires python 2.7. we check the version to see `python -V`
+* Hortonworks Sandbox runs CentOS
+* if we need to update python to 2.7 we need to do it in  away that does not break the OS
+```
+yum update
+yum install scl-utils
+yum install centos-release-scl-rh
+yum install python27
+scl enable python27 bash
+python -V
+```
+* if we need to to swtich .. `e\sec enable ...` before and after we run cassndra
+* we cannot just `yum install` cassandra
+* we do it the hard way
+```
+cd /etc/yum.repos.d
+ls
+vi datastax.repo
+```
+
+* insert the following in the file
+```
+[datastax]
+name = DataStax Repo for Apache Cassandra
+baseurl = http://rpm.datastax.com/community
+enabled = 1
+gpgcheck = 0
+```
+
+* check file was created `cat datastax.repo`
+* we are now ready to install (after we added the repo) `yum install dsc30`
+* we will interact with cassandra using the cql shell. we need its python dependencies installed first `pip install cqlsh`
+* we are ready to run cassandra `service cassandra start`
+* start the shell `cqlsh` if we have version error try `cqlsh --cqlversion="3.4.0"`
+* in cql shell we can do stuff:
+    * create a keyspace(db like entity): `CREATE KEYSPACE movielens WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor':'1'} AND durable writes = true;`  the strategy is OK for single node cluster
+    * use the db: `USE movielens;`
+    * create a table: `CREATE TABLE users (user_id int, age int, gender text, occupation text, zip text, PRIMARY KEY (user_id));`
+    * check table `DESCRIBE TABLE users;`
+    * dummy query `SELECT * FROM users;`
+
 
 ### Lecture 50. [Activity] Write Spark output into Cassandra
 
